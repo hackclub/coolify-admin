@@ -13,4 +13,7 @@ Rails.application.routes.draw do
   root "home#index"
 
   resources :coolify_teams, only: [:new, :create, :destroy]
+  
+  # Coolify sync endpoint
+  post "sync", to: "sync#create"
 end

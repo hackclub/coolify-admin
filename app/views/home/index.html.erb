@@ -1,66 +1,235 @@
 <div class="page-header">
-  <h1>Coolify Admin - Teams & Servers</h1>
-  <%= link_to "Add New Team", new_coolify_team_path, class: "btn btn-primary" %>
+  <h1>Coolify Admin - Resource Monitor</h1>
+  <div class="header-actions">
+    <%= link_to "Add New Team", new_coolify_team_path, class: "btn btn-primary" %>
+    <button id="sync-btn" class="btn btn-secondary">🔄 Sync Coolify Data</button>
+  </div>
 </div>
 
-<% if @teams_data.empty? %>
+<div id="sync-status" class="sync-status" style="display: none;"></div>
+
+<% if @coolify_teams.empty? %>
   <div class="empty-state">
     <p>No teams configured yet.</p>
     <p><%= link_to "Add your first team", new_coolify_team_path %> to get started.</p>
   </div>
 <% else %>
+  <!-- Summary Stats -->
+  <div class="stats-summary">
+    <div class="stat-card">
+      <div class="stat-value"><%= @stats[:servers] %></div>
+      <div class="stat-label">Servers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value"><%= @stats[:projects] %></div>
+      <div class="stat-label">Projects</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value"><%= @stats[:environments] %></div>
+      <div class="stat-label">Environments</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value"><%= @stats[:applications] %></div>
+      <div class="stat-label">Applications</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value"><%= @stats[:services] %></div>
+      <div class="stat-label">Services</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value"><%= @stats[:databases] %></div>
+      <div class="stat-label">Databases</div>
+    </div>
+  </div>
+
+  <!-- Teams List -->
   <div class="teams-list">
-    <% @teams_data.each do |data| %>
+    <% @coolify_teams.each do |coolify_team| %>
       <div class="team-card">
         <div class="team-header">
           <div class="team-header-left">
-            <h2><%= data[:team].name %></h2>
+            <h2><%= coolify_team.name %></h2>
             <div class="team-meta">
-              <span class="team-url"><%= data[:team].base_url %></span>
-              <span class="team-token">Token: <%= data[:team].masked_token %></span>
+              <span class="team-url"><%= coolify_team.base_url %></span>
+              <span class="team-token">Token: <%= coolify_team.masked_token %></span>
             </div>
           </div>
           <div class="team-actions">
-            <%= button_to "Delete", coolify_team_path(data[:team]), 
+            <%= button_to "Delete", coolify_team_path(coolify_team), 
                 method: :delete, 
                 class: "btn btn-danger",
-                form: { data: { turbo_confirm: "Are you sure you want to delete '#{data[:team].name}'? This cannot be undone." } } %>
+                form: { data: { turbo_confirm: "Are you sure you want to delete '#{coolify_team.name}'? This cannot be undone." } } %>
           </div>
         </div>
 
-        <% if data[:error] %>
-          <div class="error-message">
-            ⚠️ <%= data[:error] %>
-          </div>
-        <% else %>
-          <div class="tree-section">
-            <% servers = data[:tree]["servers"] || [] %>
-            <h3>Servers (<%= servers.length %>)</h3>
-            <% if servers.empty? %>
-              <p class="no-data">No servers found</p>
-            <% else %>
-                  <ul class="tree-list server-list">
-                    <% servers.each do |server| %>
-                      <li class="tree-item server-item">
-                        <div class="item-name server-name"><%= server["name"] %></div>
-                        <div class="server-url"><%= server["ip"] %></div>
-                        <div class="server-key">
-                          <% if server["private_key_name"] %>
-                            🔑 <%= server["private_key_name"] %>
-                          <% elsif server["private_key_id"] %>
-                            Key ID: <%= server["private_key_id"] %>
-                          <% else %>
-                            No key configured
-                          <% end %>
-                        </div>
-                      </li>
+        <div class="tree-section">
+          <!-- Servers Section -->
+          <h3>Servers (<%= coolify_team.servers.count %>)</h3>
+          <% if coolify_team.servers.empty? %>
+            <p class="no-data">No servers synced yet. Click "Sync Coolify Data" above.</p>
+          <% else %>
+            <ul class="tree-list server-list">
+              <% coolify_team.servers.each do |server| %>
+                <li class="tree-item server-item">
+                  <div class="item-name server-name">
+                    <%= server.name %>
+                    <% if server.is_reachable %>
+                      <span class="badge badge-success">up</span>
+                    <% else %>
+                      <span class="badge badge-error">down</span>
                     <% end %>
-                  </ul>
-            <% end %>
-          </div>
-        <% end %>
+                  </div>
+                  <div class="server-url"><%= server.ip %>:<%= server.port %> (<%= server.user %>) • <%= server.proxy_type || 'no-proxy' %> • <%= server.resources.count %> resources</div>
+                </li>
+              <% end %>
+            </ul>
+          <% end %>
+
+          <!-- Projects Section -->
+          <h3>Projects (<%= coolify_team.projects.count %>)</h3>
+          <% if coolify_team.projects.empty? %>
+            <p class="no-data">No projects synced yet.</p>
+          <% else %>
+            <ul class="tree-list project-list">
+              <% coolify_team.projects.each do |project| %>
+                <li class="tree-item project-item">
+                  <div class="item-name project-name"><%= project.name %></div>
+                  
+                  <!-- Environments for this project -->
+                  <% if project.environments.any? %>
+                    <ul class="tree-list environment-list">
+                      <% project.environments.each do |environment| %>
+                        <li class="tree-item environment-item">
+                          <div class="item-name environment-name">
+                            <%= environment.name %> <span class="count">(<%= environment.resources.count %>)</span>
+                          </div>
+                          
+                          <!-- Resources for this environment -->
+                          <% if environment.resources.any? %>
+                            <ul class="tree-list resource-list">
+                              <% environment.resources.each do |resource| %>
+                                <li class="tree-item resource-item">
+                                  <div class="resource-type-label"><%= resource.type.sub('Coolify', '').downcase %></div>
+                                  <div class="item-name resource-name">
+                                    <%= resource.name %>
+                                    <% if resource.status %>
+                                      <span class="status <%= resource.status.include?('running') ? 'ok' : 'err' %>">
+                                        <%= resource.status %>
+                                      </span>
+                                    <% end %>
+                                    <% if resource.fqdn.present? %>
+                                      • <%= resource.fqdn %>
+                                    <% end %>
+                                  </div>
+                                </li>
+                              <% end %>
+                            </ul>
+                          <% end %>
+                        </li>
+                      <% end %>
+                    </ul>
+                  <% end %>
+                </li>
+              <% end %>
+            </ul>
+          <% end %>
+        </div>
       </div>
     <% end %>
   </div>
 <% end %>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const syncBtn = document.getElementById('sync-btn');
+  const syncStatus = document.getElementById('sync-status');
+
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async function() {
+      // Disable button and show loading state
+      syncBtn.disabled = true;
+      syncBtn.textContent = '⏳ Syncing...';
+      
+      // Show status div
+      syncStatus.style.display = 'block';
+      syncStatus.className = 'sync-status syncing';
+      syncStatus.textContent = 'Syncing data from Coolify API...';
+
+      try {
+        const response = await fetch('/sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+          }
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          syncStatus.className = 'sync-status success';
+          syncStatus.innerHTML = buildSuccessMessage(result);
+          
+          // Reload page after 2 seconds to show fresh data
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+        } else {
+          syncStatus.className = 'sync-status error';
+          syncStatus.innerHTML = buildErrorMessage(result);
+          
+          // Re-enable button on error
+          syncBtn.disabled = false;
+          syncBtn.textContent = '🔄 Sync Coolify Data';
+        }
+      } catch (error) {
+        syncStatus.className = 'sync-status error';
+        syncStatus.textContent = `❌ Network error: ${error.message}`;
+        
+        // Re-enable button on error
+        syncBtn.disabled = false;
+        syncBtn.textContent = '🔄 Sync Coolify Data';
+      }
+    });
+  }
+
+  function buildSuccessMessage(result) {
+    let html = '<div class="sync-success">✅ Sync completed successfully!</div>';
+    html += '<div class="sync-details">';
+    
+    for (const [teamName, teamResult] of Object.entries(result.teams || {})) {
+      if (teamResult.success) {
+        const counts = teamResult.synced;
+        html += `<div class="team-sync-result">
+          <strong>${teamName}:</strong> 
+          ${counts.servers} servers, 
+          ${counts.projects} projects, 
+          ${counts.environments} environments, 
+          ${counts.applications} applications, 
+          ${counts.services} services, 
+          ${counts.databases} databases
+        </div>`;
+      } else {
+        html += `<div class="team-sync-error"><strong>${teamName}:</strong> ${teamResult.error}</div>`;
+      }
+    }
+    
+    html += '</div>';
+    html += '<p class="reload-notice">Reloading page...</p>';
+    return html;
+  }
+
+  function buildErrorMessage(result) {
+    let html = '<div class="sync-error">❌ Sync failed</div>';
+    
+    for (const [teamName, teamResult] of Object.entries(result.teams || {})) {
+      if (!teamResult.success) {
+        html += `<div class="team-sync-error"><strong>${teamName}:</strong> ${teamResult.error}</div>`;
+      }
+    }
+    
+    return html;
+  }
+});
+</script>
 

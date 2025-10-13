@@ -2,6 +2,12 @@ class CoolifyTeam < ApplicationRecord
   # Rails 7+ Active Record Encryption -> uses token_ciphertext under the hood
   encrypts :token
 
+  # Associations for synced Coolify resources
+  has_many :teams, dependent: :destroy
+  has_many :servers, dependent: :destroy
+  has_many :projects, dependent: :destroy
+  has_many :resources, dependent: :destroy
+
   validates :name, :base_url, :token, presence: true
   validates :token_fingerprint, presence: true, uniqueness: true
   validates :base_url, format: URI::DEFAULT_PARSER.make_regexp(%w[http https])

@@ -139,6 +139,23 @@ class Coolify
     projects
   end
 
+  # New endpoints for sync service
+  def current_team
+    get_json("/teams/current")
+  end
+
+  def applications
+    get_json("/applications")
+  end
+
+  def services
+    get_json("/services")
+  end
+
+  def databases
+    get_json("/databases")
+  end
+
   # --------------------------- Low-level HTTP ----------------------------------
   private
 
@@ -196,7 +213,7 @@ class Coolify
         case resp.status
         when 401, 403 then raise UnauthorizedError, snippet(resp)
         when 404       then raise NotFoundError,    snippet(resp)
-        else               raise ApiError,          "#{resp.status} #{resp.reason}: #{snippet(resp)}"
+        else               raise ApiError,          "#{resp.status}: #{snippet(resp)}"
         end
       end
 
