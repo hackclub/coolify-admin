@@ -27,6 +27,8 @@ services:
       - bundle_cache:/usr/local/bundle
     ports:
       - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
     environment:
       RAILS_ENV: development
       DATABASE_URL: postgresql://postgres:password@db:5432/coolify_admin_development

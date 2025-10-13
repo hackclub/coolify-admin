@@ -1,0 +1,56 @@
+<div class="page-header">
+  <h1>Coolify Admin - Teams & Servers</h1>
+  <%= link_to "Add New Team", new_coolify_team_path, class: "btn btn-primary" %>
+</div>
+
+<% if @teams_data.empty? %>
+  <div class="empty-state">
+    <p>No teams configured yet.</p>
+    <p><%= link_to "Add your first team", new_coolify_team_path %> to get started.</p>
+  </div>
+<% else %>
+  <div class="teams-list">
+    <% @teams_data.each do |data| %>
+      <div class="team-card">
+        <div class="team-header">
+          <div class="team-header-left">
+            <h2><%= data[:team].name %></h2>
+            <div class="team-meta">
+              <span class="team-url"><%= data[:team].base_url %></span>
+              <span class="team-token">Token: <%= data[:team].masked_token %></span>
+            </div>
+          </div>
+          <div class="team-actions">
+            <%= button_to "Delete", coolify_team_path(data[:team]), 
+                method: :delete, 
+                class: "btn btn-danger",
+                form: { data: { turbo_confirm: "Are you sure you want to delete '#{data[:team].name}'? This cannot be undone." } } %>
+          </div>
+        </div>
+
+        <% if data[:error] %>
+          <div class="error-message">
+            ⚠️ <%= data[:error] %>
+          </div>
+        <% else %>
+          <div class="servers-section">
+            <h3>Servers (<%= data[:servers].length %>)</h3>
+            <% if data[:servers].empty? %>
+              <p class="no-servers">No servers found</p>
+            <% else %>
+              <ul class="servers-list">
+                <% data[:servers].each do |server| %>
+                  <li class="server-item">
+                    <span class="server-name"><%= server["name"] %></span>
+                    <span class="server-uuid"><%= server["uuid"] %></span>
+                  </li>
+                <% end %>
+              </ul>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+

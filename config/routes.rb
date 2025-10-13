@@ -10,5 +10,7 @@ Rails.application.routes.draw do
   # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
 
   # Defines the root path route ("/")
-  # root "controller#action"
+  root "home#index"
+
+  resources :coolify_teams, only: [:new, :create, :destroy]
 end

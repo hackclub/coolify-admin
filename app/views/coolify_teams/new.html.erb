@@ -1,0 +1,53 @@
+<div class="page-header">
+  <h1>Add New Coolify Team</h1>
+</div>
+
+<div class="form-container">
+  <%= form_with model: @coolify_team, local: true do |form| %>
+    <% if @coolify_team.errors.any? %>
+      <div class="error-messages">
+        <h3><%= pluralize(@coolify_team.errors.count, "error") %> prohibited this team from being saved:</h3>
+        <ul>
+          <% @coolify_team.errors.full_messages.each do |message| %>
+            <li><%= message %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div class="form-group">
+      <%= form.label :name, "Team Name" %>
+      <%= form.text_field :name, required: true, placeholder: "e.g., Production, Staging" %>
+    </div>
+
+    <div class="form-group">
+      <%= form.label :base_url, "Coolify URL" %>
+      <%= form.text_field :base_url, required: true, placeholder: "https://coolify.example.com", type: "url" %>
+      <small>The base URL of your Coolify instance</small>
+    </div>
+
+    <div class="form-group">
+      <%= form.label :token, "API Token" %>
+      <%= form.password_field :token, required: true, placeholder: "Enter your Coolify API token" %>
+      <small>Generated from your Coolify instance settings</small>
+    </div>
+
+    <div class="form-group">
+      <%= form.label :api_path_prefix, "API Path Prefix (optional)" %>
+      <%= form.text_field :api_path_prefix, placeholder: "Leave blank for auto-detection" %>
+      <small>Usually blank or "/api" - will be auto-detected if left empty</small>
+    </div>
+
+    <div class="form-group checkbox-group">
+      <%= form.check_box :verify_tls, checked: true %>
+      <%= form.label :verify_tls, "Verify TLS/SSL certificates" %>
+      <small>Uncheck only for local development with self-signed certificates</small>
+    </div>
+
+    <div class="form-actions">
+      <%= form.submit "Create Team", class: "btn btn-primary" %>
+      <%= link_to "Cancel", root_path, class: "btn btn-secondary" %>
+    </div>
+  <% end %>
+</div>
+

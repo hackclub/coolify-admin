@@ -23,17 +23,43 @@ A Rails 8.0.3 application with Docker support.
 
 ### Quick Start
 
-1. **Build and start the application:**
+1. **Set up encryption keys:**
+
+First, copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Then generate encryption keys:
+
+```bash
+docker-compose up -d db  # Start database first
+docker-compose run --rm web bin/rails db:encryption:init
+```
+
+Copy the output keys into your `.env` file:
+
+```bash
+# .env
+ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=<paste_primary_key_here>
+ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=<paste_deterministic_key_here>
+ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=<paste_salt_here>
+```
+
+**Important:** The `.env` file is gitignored and should NEVER be committed to version control. It contains sensitive encryption keys that protect your data.
+
+2. **Build and start the application:**
 
 ```bash
 docker-compose up --build
 ```
 
-2. **Access the application:**
+3. **Access the application:**
 
 Open your browser and navigate to `http://localhost:3000`
 
-3. **Create the database:**
+4. **Database setup:**
 
 The database will be created automatically on first run. If you need to manually run migrations:
 
@@ -93,10 +119,27 @@ docker-compose exec web rails generate controller Welcome index
 docker-compose exec web bash
 ```
 
+### Environment Variables
+
+The application uses a `.env` file for sensitive configuration:
+
+- **`.env`** - Your local environment variables (gitignored, never commit this!)
+- **`.env.example`** - Template showing what variables are needed (safe to commit)
+
+**Required variables in `.env`:**
+- `ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY` - For encrypting sensitive data
+- `ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY` - For deterministic encryption
+- `ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT` - Key derivation salt
+
+Generate these keys with:
+```bash
+docker-compose run --rm web bin/rails db:encryption:init
+```
+
 ### Database
 
 The application is configured to use:
-- **PostgreSQL** when running in Docker (via `DATABASE_URL`)
+- **PostgreSQL** when running in Docker (hardcoded in `docker-compose.yml`)
 - **SQLite3** for local development without Docker
 
 Database credentials (Docker):
@@ -105,6 +148,8 @@ Database credentials (Docker):
 - Username: `postgres`
 - Password: `password`
 - Database: `coolify_admin_development`
+
+These credentials are hardcoded in `docker-compose.yml` since they're only for local development.
 
 ### Security
 
@@ -160,17 +205,41 @@ netstat -tuln | grep -E "(3000|5432)"
 
 ### Production Deployment
 
-This app includes Kamal for Docker-based deployment:
+This app includes Kamal for Docker-based deployment.
 
-```bash
-# Initialize Kamal configuration
-kamal init
+**Important: Before deploying to production:**
 
-# Deploy to production
-kamal deploy
-```
+1. **Generate NEW encryption keys for production:**
+   ```bash
+   # On your production server or in CI
+   bin/rails db:encryption:init
+   ```
 
-See `config/deploy.yml` for Kamal configuration.
+2. **Set environment variables in your production environment:**
+   - For Kamal: Add to `.kamal/secrets` (gitignored)
+   - For Heroku/similar: Use their environment variable management
+   - For Kubernetes: Use Secrets
+   
+   Required production variables:
+   ```
+   ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=<production_key>
+   ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=<production_key>
+   ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=<production_salt>
+   DATABASE_URL=<production_database_url>
+   RAILS_MASTER_KEY=<from_config/master.key>
+   ```
+
+3. **Deploy:**
+   ```bash
+   kamal init    # Configure deployment
+   kamal deploy  # Deploy to production
+   ```
+
+**⚠️ Security Notes:**
+- NEVER use development encryption keys in production
+- NEVER commit `.env`, `.kamal/secrets`, or `config/master.key` to git
+- Each environment (dev, staging, prod) should have unique encryption keys
+- If encryption keys are leaked, you must rotate them and re-encrypt all data
 
 ### Troubleshooting
 
