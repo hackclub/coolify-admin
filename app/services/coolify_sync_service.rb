@@ -97,8 +97,14 @@ class CoolifySyncService
     Rails.logger.info "  📡 Fetching team data..."
     team_data = api.current_team
 
-    Rails.logger.info "  📡 Fetching servers..."
-    servers_data = api.servers
+    Rails.logger.info "  📡 Fetching servers (with key metadata)..."
+    begin
+      tree = api.tree
+      servers_data = tree["servers"] || []
+    rescue => e
+      Rails.logger.warn "  ⚠️ Tree fetch failed (#{e.message}), falling back to /servers"
+      servers_data = api.servers
+    end
 
     Rails.logger.info "  📡 Fetching projects..."
     projects_data = api.projects
@@ -243,7 +249,7 @@ class CoolifySyncService
   def create_server(coolify_team, data)
     # Note: The /servers endpoint doesn't return the internal 'id' field
     # We'll add it later from application/database destination data
-    Server.create!(
+    server = Server.create!(
       coolify_team: coolify_team,
       uuid: data['uuid'],
       name: data['name'],
@@ -255,6 +261,19 @@ class CoolifySyncService
       is_reachable: data.dig('settings', 'is_reachable') || false,
       metadata: data
     )
+
+    # Create/update PrivateKey stub if API provides private_key_id/name
+    key_uuid = data['private_key_id'] || data.dig('private_key', 'uuid')
+    key_name = data.dig('private_key', 'name')
+    if key_uuid.present?
+      pk = PrivateKey.find_or_initialize_by(coolify_team: coolify_team, uuid: key_uuid)
+      pk.name ||= key_name || "Key #{key_uuid}"
+      pk.source = 'manual'
+      pk.save!
+      server.update!(private_key: pk)
+    end
+
+    server
   end
   
   def update_server_ids(coolify_team, applications_data, databases_data)

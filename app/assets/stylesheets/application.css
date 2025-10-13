@@ -535,6 +535,14 @@ body {
   margin-top: 0;
 }
 
+.filesystem-breakdown {
+  color: #666;
+  font-size: 0.68rem;
+  margin-left: 0.5rem;
+  margin-top: 0.2rem;
+  font-family: monospace;
+}
+
 /* Project Tree - Simple & Clean */
 .tree-section {
   background: #fafafa;
@@ -611,10 +619,25 @@ body {
   font-weight: normal;
 }
 
+.resource-server {
+  color: #666;
+  font-size: 0.68rem;
+  margin-left: 0.5rem;
+  margin-top: 0.1rem;
+}
+
 .resource-meta {
   color: #999;
   font-size: 0.7rem;
   margin: 0;
+}
+
+.resource-stats {
+  color: #666;
+  font-size: 0.68rem;
+  margin-left: 0.5rem;
+  margin-top: 0.2rem;
+  font-family: monospace;
 }
 
 /* Status indicators */

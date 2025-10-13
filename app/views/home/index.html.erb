@@ -3,6 +3,7 @@
   <div class="header-actions">
     <%= link_to "Add New Team", new_coolify_team_path, class: "btn btn-primary" %>
     <button id="sync-btn" class="btn btn-secondary">🔄 Sync Coolify Data</button>
+    <button id="collect-btn" class="btn btn-secondary">📊 Collect Metrics Now</button>
   </div>
 </div>
 
@@ -78,8 +79,27 @@
                     <% else %>
                       <span class="badge badge-error">down</span>
                     <% end %>
+                    <% if server.private_key&.private_key.present? %>
+                      <button class="btn btn-small" data-action="collect-server-stats" data-server-id="<%= server.id %>" data-server-name="<%= server.name %>">📊 Collect Stats</button>
+                    <% end %>
                   </div>
-                  <div class="server-url"><%= server.ip %>:<%= server.port %> (<%= server.user %>) • <%= server.proxy_type || 'no-proxy' %> • <%= server.resources.count %> resources</div>
+                  <div class="server-url"><%= server.ip %>:<%= server.port %> (<%= server.user %>) • <%= server.proxy_type || 'no-proxy' %> • <%= server.resources.count %> resources
+                    <% unless server.private_key&.private_key.present? %>
+                      <span class="badge badge-warning">SSH key required</span>
+                      <button class="btn btn-small" data-action="add-key" data-server-id="<%= server.id %>">Add SSH Key</button>
+                    <% end %>
+                  </div>
+                  <% if (stat = @latest_server_stats[server.id]) %>
+                    <div class="server-stats">
+                      CPU: <%= stat.cpu_pct&.round(1) %>% • MEM: <%= format_memory_stat(stat) %> • LOAD: <%= format_load_stat(stat, server) %>
+                    </div>
+                    <% local_fs = local_filesystems(stat) %>
+                    <% if local_fs.any? %>
+                      <div class="filesystem-breakdown">
+                        DISK: <%= local_fs.map { |fs| format_filesystem(fs) }.join(' • ') %>
+                      </div>
+                    <% end %>
+                  <% end %>
                 </li>
               <% end %>
             </ul>
@@ -121,6 +141,14 @@
                                       • <%= resource.fqdn %>
                                     <% end %>
                                   </div>
+                                  <div class="resource-server">
+                                    📍 <%= resource.server.name %>
+                                  </div>
+                                  <% if (rstat = @latest_resource_stats[resource.id]) %>
+                                    <div class="resource-stats">
+                                      CPU: <%= rstat.cpu_pct&.round(1) %>% • MEM: <%= format_memory_stat(rstat) %> • DISK: <%= format_bytes([rstat.disk_persistent_bytes, rstat.disk_runtime_bytes].compact.sum) %>
+                                    </div>
+                                  <% end %>
                                 </li>
                               <% end %>
                             </ul>
@@ -193,6 +221,36 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  const collectBtn = document.getElementById('collect-btn');
+  if (collectBtn) {
+    collectBtn.addEventListener('click', async function() {
+      collectBtn.disabled = true;
+      const prev = collectBtn.textContent;
+      collectBtn.textContent = '⏳ Collecting...';
+
+      try {
+        const response = await fetch('/metrics/collect_now', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+          }
+        });
+        const result = await response.json();
+        if (result.success) {
+          alert(`Triggered ${result.triggered} servers. Skipped: ${result.skipped.join(', ')}`);
+        } else {
+          alert(`Collect failed: ${result.error}`);
+        }
+      } catch (e) {
+        alert(`Network error: ${e.message}`);
+      } finally {
+        collectBtn.disabled = false;
+        collectBtn.textContent = prev;
+      }
+    });
+  }
+
   function buildSuccessMessage(result) {
     let html = '<div class="sync-success">✅ Sync completed successfully!</div>';
     html += '<div class="sync-details">';
@@ -230,6 +288,71 @@ document.addEventListener('DOMContentLoaded', function() {
     
     return html;
   }
+
+  // Inline Add SSH Key flow
+  document.querySelectorAll('button[data-action="add-key"]').forEach((btn) => {
+    btn.addEventListener('click', async function() {
+      const serverId = this.getAttribute('data-server-id');
+      try {
+        const resp = await fetch(`/servers/${serverId}/private_key`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+          }
+        });
+        const result = await resp.json();
+        if (result.success && result.redirect_to) {
+          window.location.href = result.redirect_to;
+        } else {
+          alert(`Failed to prepare key: ${result.error || 'Unknown error'}`);
+        }
+      } catch (e) {
+        alert(`Network error: ${e.message}`);
+      }
+    });
+  });
+
+  // Collect stats for individual server
+  document.querySelectorAll('button[data-action="collect-server-stats"]').forEach((btn) => {
+    btn.addEventListener('click', async function() {
+      const serverId = this.getAttribute('data-server-id');
+      const serverName = this.getAttribute('data-server-name');
+      const button = this;
+      
+      button.disabled = true;
+      const prevText = button.textContent;
+      button.textContent = '⏳ Collecting...';
+      
+      try {
+        const resp = await fetch(`/servers/${serverId}/collect_stats`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+          }
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+          alert(`✅ Stats collection started for ${serverName}\n\nServer stats: triggered\nResource stats: ${result.resources_triggered} containers\n\nThe page will refresh in a few seconds.`);
+          
+          // Refresh page after a delay to show updated stats
+          setTimeout(() => {
+            window.location.reload();
+          }, 3000);
+        } else {
+          alert(`❌ Failed: ${result.error}`);
+          button.disabled = false;
+          button.textContent = prevText;
+        }
+      } catch (e) {
+        alert(`Network error: ${e.message}`);
+        button.disabled = false;
+        button.textContent = prevText;
+      }
+    });
+  });
 });
 </script>
 

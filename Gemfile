@@ -22,6 +22,12 @@ gem "jbuilder"
 # HTTP client for Coolify API
 gem "httpx"
 
+# SSH client for remote metrics collection
+gem "net-ssh", "~> 7.2"
+# Support modern OpenSSH key formats (ed25519, new key encodings)
+gem "ed25519", "~> 1.3"
+gem "bcrypt_pbkdf", "~> 1.1"
+
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
 

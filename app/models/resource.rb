@@ -23,6 +23,8 @@ class Resource < ApplicationRecord
   delegate :name, to: :environment, prefix: true
   delegate :project, to: :environment
 
+  has_many :resource_stats, dependent: :destroy
+
   # Status helpers
   def running?
     status == 'running'

@@ -16,4 +16,14 @@ Rails.application.routes.draw do
   
   # Coolify sync endpoint
   post "sync", to: "sync#create"
+
+  # Manual metrics trigger
+  post "metrics/collect_now", to: "metrics#collect_now"
+
+  # Server SSH key entry
+  post "servers/:id/private_key", to: "private_keys#upsert", as: :server_private_key
+  post "servers/:id/ssh_test", to: "metrics#ssh_test", as: :server_ssh_test
+  post "servers/:id/collect_stats", to: "metrics#collect_server_stats", as: :server_collect_stats
+
+  resources :private_keys, only: [:edit, :update]
 end

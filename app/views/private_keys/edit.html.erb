@@ -1,0 +1,28 @@
+<div class="page-header">
+  <h1>Add SSH Private Key</h1>
+  <p>This key will be used for all servers referencing it.</p>
+  <p><strong>Note:</strong> ID and Name are provided by the Coolify API and cannot be changed.</p>
+</div>
+
+<div class="form-card">
+  <dl>
+    <dt>Key ID</dt>
+    <dd><%= @private_key.uuid.presence || '(none)' %></dd>
+    <dt>Key Name</dt>
+    <dd><%= @private_key.name %></dd>
+  </dl>
+
+  <%= form_with model: @private_key, url: private_key_path(@private_key, server_id: params[:server_id]), method: :put do |f| %>
+    <div class="form-group">
+      <%= f.label :private_key, 'Private Key (PEM)' %>
+      <%= f.text_area :private_key, rows: 12, required: true, placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----" %>
+    </div>
+    <div class="form-actions">
+      <%= f.submit 'Save Key', class: 'btn btn-primary' %>
+      <%= link_to 'Cancel', root_path, class: 'btn btn-secondary' %>
+    </div>
+  <% end %>
+</div>
+
+
+

@@ -18,6 +18,14 @@ class HomeController < ApplicationController
       databases: CoolifyDatabase.count,
       total_resources: Resource.count
     }
+    # Preload latest stats per server/resource for display
+    @latest_server_stats = ServerStat
+      .where(id: ServerStat.select('DISTINCT ON (server_id) id').order('server_id, captured_at DESC'))
+      .index_by(&:server_id)
+
+    @latest_resource_stats = ResourceStat
+      .where(id: ResourceStat.select('DISTINCT ON (resource_id) id').order('resource_id, captured_at DESC'))
+      .index_by(&:resource_id)
   end
 end
 

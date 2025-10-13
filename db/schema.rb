@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_10_13_065418) do
+ActiveRecord::Schema[8.0].define(version: 2025_10_13_234441) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -40,6 +40,22 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_065418) do
     t.index ["project_id"], name: "index_environments_on_project_id"
   end
 
+  create_table "private_keys", force: :cascade do |t|
+    t.bigint "coolify_team_id", null: false
+    t.string "uuid"
+    t.string "name"
+    t.string "fingerprint"
+    t.string "source", default: "manual", null: false
+    t.text "private_key_ciphertext"
+    t.datetime "last_fetched_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.text "private_key"
+    t.index ["coolify_team_id", "name"], name: "index_private_keys_on_coolify_team_id_and_name"
+    t.index ["coolify_team_id", "uuid"], name: "index_private_keys_on_coolify_team_id_and_uuid", unique: true
+    t.index ["coolify_team_id"], name: "index_private_keys_on_coolify_team_id"
+  end
+
   create_table "projects", force: :cascade do |t|
     t.bigint "coolify_team_id", null: false
     t.string "uuid", null: false
@@ -51,6 +67,23 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_065418) do
     t.index ["coolify_team_id", "uuid"], name: "index_projects_on_coolify_team_id_and_uuid", unique: true
     t.index ["coolify_team_id"], name: "index_projects_on_coolify_team_id"
     t.index ["uuid"], name: "index_projects_on_uuid"
+  end
+
+  create_table "resource_stats", force: :cascade do |t|
+    t.bigint "resource_id", null: false
+    t.bigint "server_id", null: false
+    t.datetime "captured_at", null: false
+    t.float "cpu_pct"
+    t.float "mem_pct"
+    t.bigint "mem_used_bytes"
+    t.bigint "disk_persistent_bytes"
+    t.bigint "disk_runtime_bytes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "mem_limit_bytes"
+    t.index ["resource_id", "captured_at"], name: "index_resource_stats_on_resource_id_and_captured_at"
+    t.index ["resource_id"], name: "index_resource_stats_on_resource_id"
+    t.index ["server_id"], name: "index_resource_stats_on_server_id"
   end
 
   create_table "resources", force: :cascade do |t|
@@ -77,6 +110,26 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_065418) do
     t.index ["uuid"], name: "index_resources_on_uuid"
   end
 
+  create_table "server_stats", force: :cascade do |t|
+    t.bigint "server_id", null: false
+    t.datetime "captured_at", null: false
+    t.float "cpu_pct"
+    t.float "mem_pct"
+    t.bigint "mem_used_bytes"
+    t.bigint "disk_used_bytes"
+    t.bigint "disk_total_bytes"
+    t.float "iops_r"
+    t.float "iops_w"
+    t.float "load1"
+    t.float "load5"
+    t.float "load15"
+    t.jsonb "filesystems", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["server_id", "captured_at"], name: "index_server_stats_on_server_id_and_captured_at"
+    t.index ["server_id"], name: "index_server_stats_on_server_id"
+  end
+
   create_table "servers", force: :cascade do |t|
     t.bigint "coolify_team_id", null: false
     t.string "uuid", null: false
@@ -90,8 +143,11 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_065418) do
     t.jsonb "metadata", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "private_key_id"
+    t.integer "cpu_cores"
     t.index ["coolify_team_id", "uuid"], name: "index_servers_on_coolify_team_id_and_uuid", unique: true
     t.index ["coolify_team_id"], name: "index_servers_on_coolify_team_id"
+    t.index ["private_key_id"], name: "index_servers_on_private_key_id"
     t.index ["uuid"], name: "index_servers_on_uuid"
   end
 
@@ -109,10 +165,15 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_065418) do
   end
 
   add_foreign_key "environments", "projects"
+  add_foreign_key "private_keys", "coolify_teams"
   add_foreign_key "projects", "coolify_teams"
+  add_foreign_key "resource_stats", "resources"
+  add_foreign_key "resource_stats", "servers"
   add_foreign_key "resources", "coolify_teams"
   add_foreign_key "resources", "environments"
   add_foreign_key "resources", "servers"
+  add_foreign_key "server_stats", "servers"
   add_foreign_key "servers", "coolify_teams"
+  add_foreign_key "servers", "private_keys"
   add_foreign_key "teams", "coolify_teams"
 end

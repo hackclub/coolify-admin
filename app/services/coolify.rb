@@ -94,7 +94,10 @@ class Coolify
     # Add key name to each server
     servers_with_keys = full_servers.map do |server|
       if server["private_key_id"] && keys_by_id[server["private_key_id"]]
-        server.merge("private_key_name" => keys_by_id[server["private_key_id"]]["name"])
+        server.merge("private_key" => {
+          "uuid" => server["private_key_id"],
+          "name" => keys_by_id[server["private_key_id"]]["name"]
+        })
       else
         server
       end
