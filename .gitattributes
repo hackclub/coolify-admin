@@ -1,0 +1,87 @@
+# See https://git-scm.com/docs/gitattributes for more about git attribute files.
+
+# Mark the database schema as having been generated.
+db/schema.rb linguist-generated
+
+# Mark any vendored files as having been vendored.
+vendor/* linguist-vendored
+vendor/**/* linguist-vendored
+
+# Mark lock files as binary so they won't get messed up by CRLF issues
+Gemfile.lock binary
+package-lock.json binary
+yarn.lock binary
+
+# Ensure line endings are normalized
+* text=auto
+
+# Ruby files should have LF endings
+*.rb text eol=lf
+*.rake text eol=lf
+*.ru text eol=lf
+Gemfile text eol=lf
+Rakefile text eol=lf
+
+# YAML files
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# JSON files
+*.json text eol=lf
+
+# JavaScript and related
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.mjs text eol=lf
+
+# CSS and related
+*.css text eol=lf
+*.scss text eol=lf
+*.sass text eol=lf
+
+# HTML and templates
+*.html text eol=lf
+*.erb text eol=lf
+*.haml text eol=lf
+*.slim text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Documentation
+*.md text eol=lf
+*.txt text eol=lf
+
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+
+# Fonts
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+
+# Archives
+*.zip binary
+*.tar binary
+*.gz binary
+
+# Database files
+*.sqlite3 binary
+*.db binary
+
+# Exclude files from exporting
+.gitattributes export-ignore
+.gitignore export-ignore
+.github export-ignore
+test/ export-ignore
+spec/ export-ignore
+
