@@ -217,49 +217,118 @@ body {
   margin-top: 1rem;
 }
 
-/* Servers Section */
-.servers-section {
+/* Tree Section */
+.tree-section {
   margin-top: 1.5rem;
   padding-top: 1.5rem;
   border-top: 1px solid #e5e7eb;
 }
 
-.servers-section h3 {
+.tree-section h3 {
   font-size: 1.1rem;
   color: #374151;
   margin-bottom: 1rem;
 }
 
-.no-servers {
+.no-data {
   color: #9ca3af;
   font-style: italic;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0.5rem 1.5rem;
 }
 
-.servers-list {
+/* Tree List Base */
+.tree-list {
   list-style: none;
-  display: grid;
-  gap: 0.75rem;
+  padding-left: 0;
+}
+
+.tree-item {
+  margin: 0.5rem 0;
+}
+
+.item-name {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  display: inline-block;
+  margin-bottom: 0.25rem;
+}
+
+/* Server Level (Top Level) */
+.server-list {
+  margin-top: 0.5rem;
 }
 
 .server-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
-.server-name {
-  font-weight: 500;
+.server-item > .server-name {
+  font-weight: 600;
+  font-size: 1rem;
   color: #111827;
+  background: #f3f4f6;
+  border-left: 3px solid #2563eb;
 }
 
-.server-uuid {
-  font-family: monospace;
-  font-size: 0.85rem;
+.server-url {
+  font-size: 0.875rem;
   color: #6b7280;
+  font-family: monospace;
+  margin-left: 0.75rem;
+}
+
+.server-key {
+  font-size: 0.8125rem;
+  color: #9ca3af;
+  margin-left: 0.75rem;
+}
+
+/* Project Level */
+.project-list {
+  margin-top: 0.5rem;
+  padding-left: 1.5rem;
+  border-left: 2px solid #e5e7eb;
+}
+
+.project-item > .project-name {
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: #374151;
+  background: #fefce8;
+  border-left: 3px solid #eab308;
+}
+
+/* Environment Level */
+.environment-list {
+  margin-top: 0.5rem;
+  padding-left: 1.5rem;
+  border-left: 2px solid #e5e7eb;
+}
+
+.environment-item > .environment-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: #4b5563;
+  background: #dbeafe;
+  border-left: 3px solid #3b82f6;
+}
+
+/* Resource Level */
+.resource-list {
+  margin-top: 0.5rem;
+  padding-left: 1.5rem;
+  border-left: 2px solid #e5e7eb;
+}
+
+.resource-item > .resource-name {
+  font-weight: 400;
+  font-size: 0.875rem;
+  color: #6b7280;
+  background: #f0fdf4;
+  border-left: 3px solid #22c55e;
 }
 
 /* Forms */
@@ -371,9 +440,23 @@ body {
     gap: 0.5rem;
   }
 
-  .server-item {
+  .team-header {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
+  }
+
+  .team-actions {
+    align-self: flex-end;
+  }
+
+  /* Reduce tree indentation on mobile */
+  .project-list,
+  .environment-list,
+  .resource-list {
+    padding-left: 1rem;
+  }
+
+  .item-name {
+    font-size: 0.875rem;
+    padding: 0.4rem 0.6rem;
   }
 }

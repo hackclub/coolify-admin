@@ -33,19 +33,29 @@
             ⚠️ <%= data[:error] %>
           </div>
         <% else %>
-          <div class="servers-section">
-            <h3>Servers (<%= data[:servers].length %>)</h3>
-            <% if data[:servers].empty? %>
-              <p class="no-servers">No servers found</p>
+          <div class="tree-section">
+            <% servers = data[:tree]["servers"] || [] %>
+            <h3>Servers (<%= servers.length %>)</h3>
+            <% if servers.empty? %>
+              <p class="no-data">No servers found</p>
             <% else %>
-              <ul class="servers-list">
-                <% data[:servers].each do |server| %>
-                  <li class="server-item">
-                    <span class="server-name"><%= server["name"] %></span>
-                    <span class="server-uuid"><%= server["uuid"] %></span>
-                  </li>
-                <% end %>
-              </ul>
+                  <ul class="tree-list server-list">
+                    <% servers.each do |server| %>
+                      <li class="tree-item server-item">
+                        <div class="item-name server-name"><%= server["name"] %></div>
+                        <div class="server-url"><%= server["ip"] %></div>
+                        <div class="server-key">
+                          <% if server["private_key_name"] %>
+                            🔑 <%= server["private_key_name"] %>
+                          <% elsif server["private_key_id"] %>
+                            Key ID: <%= server["private_key_id"] %>
+                          <% else %>
+                            No key configured
+                          <% end %>
+                        </div>
+                      </li>
+                    <% end %>
+                  </ul>
             <% end %>
           </div>
         <% end %>

@@ -24,6 +24,8 @@ class Coolify
   end
 
   # -------- Service core ---------------------
+  attr_reader :prefix
+
   def initialize(base_url:, token:, verify_tls: true, api_path_prefix: "", connect_timeout: 5, operation_timeout: 15)
     @base_url = base_url.to_s.strip.chomp("/")
     raise ArgumentError, "base_url required" if @base_url.empty?
@@ -41,7 +43,8 @@ class Coolify
         "Content-Type"  => "application/json"
       },
       ssl:     ssl_config,
-      timeout: { connect_timeout:, operation_timeout: }
+      timeout: { connect_timeout:, operation_timeout: },
+      max_concurrent_requests: 5  # Limit to 5 concurrent requests to avoid rate limiting
     )
   end
 
@@ -57,58 +60,77 @@ class Coolify
     @prefix = chosen
   end
 
-  # Nice nested structure for your sidebar UI
-  # { "servers" => [ { ...server, "projects" => [ { ...project, "environments" => [ { ...env, "resources" => [...] } ] } ] } ] }
+  # Simple tree: list servers with their private key names
   def tree
-    ensure_prefix!
-    servers().map do |srv|
-      projs = projects_for_server(srv) # fallback to all projects
-      {
-        **srv,
-        "projects" => projs.map do |pr|
-          envs = environments(pr["uuid"])
-          {
-            **pr,
-            "environments" => envs.map { |env| { **env, "resources" => resources(env["uuid"]) } }
-          }
+    servers_list = servers()
+    Rails.logger.info "📡 Fetched #{servers_list.length} servers"
+    
+    # Fetch full server details to get private_key_id for each
+    server_uuids = servers_list.map { |s| s["uuid"] }
+    server_urls = server_uuids.map { |uuid| build_url("/servers/#{uuid}") }
+    
+    Rails.logger.info "🔄 Fetching full details for #{server_urls.length} servers"
+    full_servers = batch_get(server_urls)
+    
+    # Get all unique private key IDs
+    key_ids = full_servers.map { |s| s["private_key_id"] }.compact.uniq
+    Rails.logger.info "🔑 Found #{key_ids.length} unique private key IDs: #{key_ids.inspect}"
+    
+    # Fetch all private keys
+    keys_by_id = {}
+    if key_ids.any?
+      begin
+        all_keys = get_json("/security/keys")
+        Rails.logger.info "🔍 Got #{all_keys.length} private keys from /security/keys"
+        all_keys.each do |key|
+          keys_by_id[key["id"]] = key
+          Rails.logger.debug "  Key #{key['id']}: #{key['name']}"
         end
-      }
-    end.then { |arr| { "servers" => arr } }
+      rescue => e
+        Rails.logger.error "❌ Failed to fetch private keys: #{e.message}"
+      end
+    end
+    
+    # Add key name to each server
+    servers_with_keys = full_servers.map do |server|
+      if server["private_key_id"] && keys_by_id[server["private_key_id"]]
+        server.merge("private_key_name" => keys_by_id[server["private_key_id"]]["name"])
+      else
+        server
+      end
+    end
+    
+    {
+      "servers" => servers_with_keys
+    }
   end
 
   # ---- Endpoints (add more as needed) -----------------------------------------
   def version
-    ensure_prefix!
     try_get_json("/version")
   end
 
   def servers
-    ensure_prefix!
     get_json("/servers")
   end
 
   def server(uuid)
-    ensure_prefix!
     get_json("/servers/#{uuid}")
   end
 
   def projects
-    ensure_prefix!
     get_json("/projects")
   end
 
   def project(uuid)
-    ensure_prefix!
     get_json("/projects/#{uuid}")
   end
 
   def environments(project_uuid)
-    ensure_prefix!
     get_json("/projects/#{project_uuid}/environments")
   end
 
   def resources(environment_uuid)
-    ensure_prefix!
     get_json("/environments/#{environment_uuid}/resources")
   end
 
@@ -122,6 +144,40 @@ class Coolify
 
   def get_json(path)  = request(:get,  path)
   def post_json(path, payload) = request(:post, path, json: payload)
+
+  # Batch GET requests - httpx handles parallelism and rate limiting internally
+  def batch_get(urls)
+    return [] if urls.empty?
+    
+    # Make all requests in parallel (httpx handles rate limiting via max_concurrent_requests)
+    responses = @http.get(*urls)
+    
+    # Process all responses
+    responses.map do |resp|
+      begin
+        # Handle HTTPX error responses
+        if resp.is_a?(HTTPX::ErrorResponse)
+          Rails.logger.warn "Batch request failed: #{resp.error.message}"
+          next []
+        end
+        
+        # Return empty array for non-2xx responses (like 404, 429)
+        unless resp.status.between?(200, 299)
+          Rails.logger.warn "Batch request returned #{resp.status} for #{resp.uri}"
+          next []
+        end
+        
+        body = resp.body.to_s
+        JSON.parse(body)
+      rescue JSON::ParserError => e
+        Rails.logger.error "JSON parse error in batch: #{e.message}"
+        []
+      rescue StandardError => e
+        Rails.logger.error "Error in batch processing: #{e.class} - #{e.message}"
+        []
+      end
+    end
+  end
 
   def request(verb, path, **opts)
     url = build_url(path)
@@ -147,18 +203,21 @@ class Coolify
       body = resp.body.to_s
       Rails.logger.debug "  Response status: #{resp.status}, body length: #{body.length}, first 200 chars: #{body[0..200]}"
       JSON.parse(body)
-    rescue HTTPX::Error => e
-      raise ConnectionError, e.message
-    rescue JSON::ParserError => e
-      body_preview = resp.body.to_s[0..500]
-      Rails.logger.error "  JSON Parse Error. Response body: #{body_preview}"
-      raise ParseError, "Invalid JSON from #{url}: #{e.message}"
-    rescue StandardError => e
-      raise ParseError, "Error parsing response from #{url}: #{e.message}"
     rescue ConnectionError
       raise if attempts >= 3
       sleep(attempts * 0.15) # tiny backoff
       retry
+    rescue UnauthorizedError, NotFoundError, ApiError
+      # Let these API errors propagate without retry
+      raise
+    rescue HTTPX::Error => e
+      raise ConnectionError, e.message
+    rescue JSON::ParserError => e
+      body_preview = resp&.body&.to_s&.[](0..500) || "no body"
+      Rails.logger.error "  JSON Parse Error. Response body: #{body_preview}"
+      raise ParseError, "Invalid JSON from #{url}: #{e.message}"
+    rescue StandardError => e
+      raise ParseError, "Unexpected error for #{url}: #{e.class} - #{e.message}"
     end
   end
 
@@ -203,15 +262,11 @@ class Coolify
     url = build_url("/servers")
     Rails.logger.debug "  Testing prefix '#{prefix}' -> #{url}"
     
-    # Try /servers endpoint instead of /version as it's more reliable
+    # Try /servers endpoint - we need a successful response (200), not just any response
     resp = get_json("/servers")
     success = resp.is_a?(Array) || resp.is_a?(Hash)
     Rails.logger.debug "  ✅ Prefix '#{prefix}' works!" if success
     success
-  rescue UnauthorizedError => e
-    # If we get unauthorized, the endpoint exists (good!)
-    Rails.logger.debug "  ✅ Prefix '#{prefix}' exists (got auth error, which is ok)"
-    true
   rescue Error => e
     Rails.logger.debug "  ❌ Prefix '#{prefix}' failed: #{e.class} - #{e.message}"
     false
