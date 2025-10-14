@@ -676,3 +676,332 @@ body {
   color: #721c24;
   border-color: #dc3545;
 }
+
+/* View Controls */
+.view-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+}
+
+.view-switcher {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.view-btn {
+  padding: 0.5rem 1rem;
+  background: white;
+  border: 1px solid #d0d0d0;
+  color: #333;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.view-btn:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.view-btn.active {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.server-filter-form {
+  margin: 0;
+}
+
+.server-filter-select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d0d0d0;
+  background: white;
+  font-size: 0.85rem;
+  min-width: 200px;
+}
+
+/* Storage View */
+.storage-view {
+  background: white;
+  border: 1px solid #e0e0e0;
+  padding: 1.5rem;
+}
+
+.storage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.storage-header h2 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.filter-badge {
+  background: #2563eb;
+  color: white;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+  border-radius: 3px;
+}
+
+.storage-list {
+  overflow-x: auto;
+}
+
+.storage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.storage-table th {
+  background: #f8f9fa;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #d0d0d0;
+  white-space: nowrap;
+}
+
+.storage-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e0e0e0;
+  vertical-align: top;
+}
+
+.storage-row:hover {
+  background: #f8f9fa;
+}
+
+.resource-name strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.resource-url {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.resource-url a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.resource-url a:hover {
+  text-decoration: underline;
+}
+
+.resource-type-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  background: #e0e0e0;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  border-radius: 3px;
+}
+
+.resource-type-badge.application {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.resource-type-badge.service {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.resource-type-badge.database {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.server-name {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.project-env {
+  font-size: 0.8rem;
+}
+
+.env-name {
+  color: #666;
+  font-size: 0.75rem;
+}
+
+.disk-usage strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #1a1a1a;
+}
+
+.disk-breakdown {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  color: #666;
+}
+
+.disk-part {
+  white-space: nowrap;
+}
+
+.memory-stat,
+.cpu-stat {
+  font-size: 0.8rem;
+}
+
+.no-data {
+  color: #999;
+  font-style: italic;
+}
+
+/* CPU View */
+.cpu-view {
+  background: white;
+  border: 1px solid #e0e0e0;
+  padding: 1.5rem;
+}
+
+.cpu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.cpu-header h2 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.cpu-list {
+  overflow-x: auto;
+}
+
+.cpu-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.cpu-table th {
+  background: #f8f9fa;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #d0d0d0;
+  white-space: nowrap;
+}
+
+.cpu-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e0e0e0;
+  vertical-align: top;
+}
+
+.cpu-row:hover {
+  background: #f8f9fa;
+}
+
+.cpu-usage-highlight {
+  font-size: 1rem;
+  color: #f59e0b;
+}
+
+.cpu-usage-highlight strong {
+  font-size: 1.1rem;
+  color: #ea580c;
+}
+
+/* RAM View */
+.ram-view {
+  background: white;
+  border: 1px solid #e0e0e0;
+  padding: 1.5rem;
+}
+
+.ram-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.ram-header h2 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.ram-list {
+  overflow-x: auto;
+}
+
+.ram-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ram-table th {
+  background: #f8f9fa;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #d0d0d0;
+  white-space: nowrap;
+}
+
+.ram-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e0e0e0;
+  vertical-align: top;
+}
+
+.ram-row:hover {
+  background: #f8f9fa;
+}
+
+.memory-usage-highlight {
+  font-size: 1rem;
+  color: #8b5cf6;
+}
+
+.memory-usage-highlight strong {
+  font-size: 1.1rem;
+  color: #7c3aed;
+}
+
+.memory-pct {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.disk-stat {
+  font-size: 0.8rem;
+}

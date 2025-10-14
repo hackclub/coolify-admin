@@ -12,6 +12,9 @@ Rails.application.routes.draw do
   # Defines the root path route ("/")
   root "home#index"
 
+  # Solid Queue web interface
+  mount MissionControl::Jobs::Engine, at: "/jobs"
+
   resources :coolify_teams, only: [:new, :create, :destroy]
   
   # Coolify sync endpoint

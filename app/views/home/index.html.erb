@@ -9,6 +9,31 @@
 
 <div id="sync-status" class="sync-status" style="display: none;"></div>
 
+<!-- View Controls -->
+<div class="view-controls">
+  <div class="view-switcher">
+    <%= link_to "🌳 Tree View", root_path(view: 'tree', server_id: @server_id), 
+        class: "view-btn #{@view == 'tree' ? 'active' : ''}" %>
+    <%= link_to "💾 Storage View", root_path(view: 'storage', server_id: @server_id), 
+        class: "view-btn #{@view == 'storage' ? 'active' : ''}" %>
+    <%= link_to "⚡ CPU View", root_path(view: 'cpu', server_id: @server_id), 
+        class: "view-btn #{@view == 'cpu' ? 'active' : ''}" %>
+    <%= link_to "🧠 RAM View", root_path(view: 'ram', server_id: @server_id), 
+        class: "view-btn #{@view == 'ram' ? 'active' : ''}" %>
+  </div>
+  
+  <div class="filter-controls">
+    <%= form_with url: root_path, method: :get, class: "server-filter-form" do |f| %>
+      <%= f.hidden_field :view, value: @view %>
+      <%= f.select :server_id, 
+          options_for_select([['All Servers', '']] + @servers.map { |s| [s.name, s.id] }, @server_id),
+          {},
+          class: "server-filter-select",
+          onchange: "this.form.submit()" %>
+    <% end %>
+  </div>
+</div>
+
 <% if @coolify_teams.empty? %>
   <div class="empty-state">
     <p>No teams configured yet.</p>
@@ -43,8 +68,9 @@
     </div>
   </div>
 
-  <!-- Teams List -->
-  <div class="teams-list">
+  <% if @view == 'tree' %>
+    <!-- Tree View: Teams List -->
+    <div class="teams-list">
     <% @coolify_teams.each do |coolify_team| %>
       <div class="team-card">
         <div class="team-header">
@@ -165,6 +191,293 @@
       </div>
     <% end %>
   </div>
+  
+  <% elsif @view == 'storage' %>
+    <!-- Storage View: Resources sorted by disk usage -->
+    <div class="storage-view">
+      <div class="storage-header">
+        <h2>Resources by Storage Usage</h2>
+        <% if @server_id.present? && (filtered_server = @servers.find { |s| s.id.to_s == @server_id.to_s }) %>
+          <span class="filter-badge">Filtered: <%= filtered_server.name %></span>
+        <% end %>
+      </div>
+      
+      <div class="storage-list">
+        <% if @resources_by_storage.any? %>
+          <table class="storage-table">
+            <thead>
+              <tr>
+                <th>Resource</th>
+                <th>Type</th>
+                <th>Server</th>
+                <th>Project / Environment</th>
+                <th>Status</th>
+                <th>Disk Usage</th>
+                <th>Memory</th>
+                <th>CPU</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @resources_by_storage.each do |resource| %>
+                <% rstat = @latest_resource_stats[resource.id] %>
+                <% total_disk = rstat ? (rstat.disk_runtime_bytes.to_i + rstat.disk_persistent_bytes.to_i) : 0 %>
+                <tr class="storage-row">
+                  <td class="resource-name">
+                    <strong><%= resource.name %></strong>
+                    <% if resource.metadata.dig('raw', 'fqdn').present? %>
+                      <div class="resource-url">
+                        <a href="<%= resource.metadata.dig('raw', 'fqdn').split(',').first %>" target="_blank" rel="noopener">
+                          <%= resource.metadata.dig('raw', 'fqdn').split(',').first %>
+                        </a>
+                      </div>
+                    <% end %>
+                  </td>
+                  <td>
+                    <span class="resource-type-badge <%= resource.type.downcase %>">
+                      <%= resource.type.sub('Coolify', '').downcase %>
+                    </span>
+                  </td>
+                  <td class="server-name"><%= resource.server.name %></td>
+                  <td class="project-env">
+                    <%= resource.environment.project.name %>
+                    <span class="env-name">/ <%= resource.environment.name %></span>
+                  </td>
+                  <td>
+                    <% if resource.status.present? %>
+                      <% status_class = resource.status.start_with?('running') ? 'ok' : 'err' %>
+                      <span class="status <%= status_class %>"><%= resource.status %></span>
+                    <% end %>
+                  </td>
+                  <td class="disk-usage">
+                    <% if total_disk > 0 %>
+                      <strong><%= format_bytes(total_disk) %></strong>
+                      <div class="disk-breakdown">
+                        <span class="disk-part">RW: <%= format_bytes(rstat.disk_runtime_bytes || 0) %></span>
+                        <span class="disk-part">Vol: <%= format_bytes(rstat.disk_persistent_bytes || 0) %></span>
+                      </div>
+                    <% else %>
+                      <span class="no-data">No data</span>
+                    <% end %>
+                  </td>
+                  <td class="memory-stat">
+                    <% if rstat %>
+                      <%= format_memory_stat(rstat) %>
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                  <td class="cpu-stat">
+                    <% if rstat&.cpu_pct %>
+                      <%= rstat.cpu_pct.round(1) %>%
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        <% else %>
+          <div class="empty-state">
+            <p>No resources found.</p>
+            <% if @server_id.present? %>
+              <p><%= link_to "Clear filter", root_path(view: 'storage') %> to see all resources.</p>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  
+  <% elsif @view == 'cpu' %>
+    <!-- CPU View: Resources sorted by CPU usage -->
+    <div class="cpu-view">
+      <div class="cpu-header">
+        <h2>Resources by CPU Usage</h2>
+        <% if @server_id.present? && (filtered_server = @servers.find { |s| s.id.to_s == @server_id.to_s }) %>
+          <span class="filter-badge">Filtered: <%= filtered_server.name %></span>
+        <% end %>
+      </div>
+      
+      <div class="cpu-list">
+        <% if @resources_by_cpu.any? %>
+          <table class="cpu-table">
+            <thead>
+              <tr>
+                <th>Resource</th>
+                <th>Type</th>
+                <th>Server</th>
+                <th>Project / Environment</th>
+                <th>Status</th>
+                <th>CPU Usage</th>
+                <th>Memory</th>
+                <th>Disk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @resources_by_cpu.each do |resource| %>
+                <% rstat = @latest_resource_stats[resource.id] %>
+                <tr class="cpu-row">
+                  <td class="resource-name">
+                    <strong><%= resource.name %></strong>
+                    <% if resource.metadata.dig('raw', 'fqdn').present? %>
+                      <div class="resource-url">
+                        <a href="<%= resource.metadata.dig('raw', 'fqdn').split(',').first %>" target="_blank" rel="noopener">
+                          <%= resource.metadata.dig('raw', 'fqdn').split(',').first %>
+                        </a>
+                      </div>
+                    <% end %>
+                  </td>
+                  <td>
+                    <span class="resource-type-badge <%= resource.type.downcase %>">
+                      <%= resource.type.sub('Coolify', '').downcase %>
+                    </span>
+                  </td>
+                  <td class="server-name"><%= resource.server.name %></td>
+                  <td class="project-env">
+                    <%= resource.environment.project.name %>
+                    <span class="env-name">/ <%= resource.environment.name %></span>
+                  </td>
+                  <td>
+                    <% if resource.status.present? %>
+                      <% status_class = resource.status.start_with?('running') ? 'ok' : 'err' %>
+                      <span class="status <%= status_class %>"><%= resource.status %></span>
+                    <% end %>
+                  </td>
+                  <td class="cpu-usage-highlight">
+                    <% if rstat&.cpu_pct %>
+                      <strong><%= rstat.cpu_pct.round(1) %>%</strong>
+                    <% else %>
+                      <span class="no-data">No data</span>
+                    <% end %>
+                  </td>
+                  <td class="memory-stat">
+                    <% if rstat %>
+                      <%= format_memory_stat(rstat) %>
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                  <td class="disk-stat">
+                    <% if rstat %>
+                      <%= format_bytes((rstat.disk_runtime_bytes || 0) + (rstat.disk_persistent_bytes || 0)) %>
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        <% else %>
+          <div class="empty-state">
+            <p>No resources found.</p>
+            <% if @server_id.present? %>
+              <p><%= link_to "Clear filter", root_path(view: 'cpu') %> to see all resources.</p>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  
+  <% elsif @view == 'ram' %>
+    <!-- RAM View: Resources sorted by memory usage -->
+    <div class="ram-view">
+      <div class="ram-header">
+        <h2>Resources by RAM Usage</h2>
+        <% if @server_id.present? && (filtered_server = @servers.find { |s| s.id.to_s == @server_id.to_s }) %>
+          <span class="filter-badge">Filtered: <%= filtered_server.name %></span>
+        <% end %>
+      </div>
+      
+      <div class="ram-list">
+        <% if @resources_by_ram.any? %>
+          <table class="ram-table">
+            <thead>
+              <tr>
+                <th>Resource</th>
+                <th>Type</th>
+                <th>Server</th>
+                <th>Project / Environment</th>
+                <th>Status</th>
+                <th>Memory Usage</th>
+                <th>Memory %</th>
+                <th>CPU</th>
+                <th>Disk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @resources_by_ram.each do |resource| %>
+                <% rstat = @latest_resource_stats[resource.id] %>
+                <tr class="ram-row">
+                  <td class="resource-name">
+                    <strong><%= resource.name %></strong>
+                    <% if resource.metadata.dig('raw', 'fqdn').present? %>
+                      <div class="resource-url">
+                        <a href="<%= resource.metadata.dig('raw', 'fqdn').split(',').first %>" target="_blank" rel="noopener">
+                          <%= resource.metadata.dig('raw', 'fqdn').split(',').first %>
+                        </a>
+                      </div>
+                    <% end %>
+                  </td>
+                  <td>
+                    <span class="resource-type-badge <%= resource.type.downcase %>">
+                      <%= resource.type.sub('Coolify', '').downcase %>
+                    </span>
+                  </td>
+                  <td class="server-name"><%= resource.server.name %></td>
+                  <td class="project-env">
+                    <%= resource.environment.project.name %>
+                    <span class="env-name">/ <%= resource.environment.name %></span>
+                  </td>
+                  <td>
+                    <% if resource.status.present? %>
+                      <% status_class = resource.status.start_with?('running') ? 'ok' : 'err' %>
+                      <span class="status <%= status_class %>"><%= resource.status %></span>
+                    <% end %>
+                  </td>
+                  <td class="memory-usage-highlight">
+                    <% if rstat&.mem_used_bytes %>
+                      <strong><%= format_bytes(rstat.mem_used_bytes) %></strong>
+                    <% else %>
+                      <span class="no-data">No data</span>
+                    <% end %>
+                  </td>
+                  <td class="memory-pct">
+                    <% if rstat %>
+                      <%= format_memory_stat(rstat) %>
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                  <td class="cpu-stat">
+                    <% if rstat&.cpu_pct %>
+                      <%= rstat.cpu_pct.round(1) %>%
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                  <td class="disk-stat">
+                    <% if rstat %>
+                      <%= format_bytes((rstat.disk_runtime_bytes || 0) + (rstat.disk_persistent_bytes || 0)) %>
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        <% else %>
+          <div class="empty-state">
+            <p>No resources found.</p>
+            <% if @server_id.present? %>
+              <p><%= link_to "Clear filter", root_path(view: 'ram') %> to see all resources.</p>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
 <% end %>
 
 <script>
