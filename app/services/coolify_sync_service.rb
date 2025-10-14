@@ -144,87 +144,107 @@ class CoolifySyncService
     }
 
     ActiveRecord::Base.transaction do
-      Rails.logger.info "  🗑️  Deleting old data..."
-      
-      # Delete all existing data (cascade via dependent: :destroy)
-      old_teams_count = coolify_team.teams.count
-      old_servers_count = coolify_team.servers.count
-      old_projects_count = coolify_team.projects.count
-      old_resources_count = coolify_team.resources.count
-      
-      Rails.logger.info "    Deleting #{old_teams_count} teams..."
-      coolify_team.teams.destroy_all
-      
-      Rails.logger.info "    Deleting #{old_servers_count} servers..."
-      coolify_team.servers.destroy_all
-      
-      Rails.logger.info "    Deleting #{old_projects_count} projects (and cascading environments/resources)..."
-      coolify_team.projects.destroy_all
-      
-      Rails.logger.info "    ✅ Deleted #{old_teams_count} teams, #{old_servers_count} servers, #{old_projects_count} projects, #{old_resources_count} resources"
+      Rails.logger.info "  🔄 Upserting data (preserving metrics history)..."
 
-      Rails.logger.info "  ✨ Creating fresh data..."
-
-      # Create team
+      # Upsert team
       if api_data[:team]
-        Rails.logger.info "    Creating team: #{api_data[:team]['name']}..."
-        create_team(coolify_team, api_data[:team])
+        Rails.logger.info "    Upserting team: #{api_data[:team]['name']}..."
+        upsert_team(coolify_team, api_data[:team])
         counts[:teams] = 1
       end
 
-      # Create servers
-      Rails.logger.info "    Creating #{api_data[:servers].length} servers..."
+      # Upsert servers and track UUIDs
+      Rails.logger.info "    Upserting #{api_data[:servers].length} servers..."
+      server_uuids = []
       api_data[:servers].each_with_index do |server_data, index|
-        create_server(coolify_team, server_data)
+        upsert_server(coolify_team, server_data)
+        server_uuids << server_data['uuid']
         counts[:servers] += 1
         Rails.logger.info "      ✓ Server #{index + 1}/#{api_data[:servers].length}: #{server_data['name']}" if (index + 1) % 10 == 0 || index == api_data[:servers].length - 1
       end
 
-      # Create projects
-      Rails.logger.info "    Creating #{api_data[:projects].length} projects..."
+      # Upsert projects and track UUIDs
+      Rails.logger.info "    Upserting #{api_data[:projects].length} projects..."
+      project_uuids = []
       api_data[:projects].each_with_index do |project_data, index|
-        project = create_project(coolify_team, project_data)
+        project = upsert_project(coolify_team, project_data)
+        project_uuids << project_data['uuid']
         counts[:projects] += 1
 
-        # Create environments for this project (if any were fetched)
+        # Upsert environments for this project (if any were fetched)
         if project_data['environments'] && project_data['environments'].any?
+          env_ids = []
           project_data['environments'].each do |env_data|
-            create_environment(project, env_data)
+            upsert_environment(project, env_data)
+            env_ids << env_data['id']
             counts[:environments] += 1
           end
+          # Delete environments that no longer exist for this project
+          project.environments.where.not(environment_id: env_ids).destroy_all
         end
         
         Rails.logger.info "      ✓ Project #{index + 1}/#{api_data[:projects].length}: #{project_data['name']}" if (index + 1) % 50 == 0 || index == api_data[:projects].length - 1
       end
 
-      # Extract and update server IDs before creating resources
+      # Extract and update server IDs before upserting resources
       # (Services need server IDs to match, but /servers endpoint doesn't provide them)
       Rails.logger.info "    Updating server IDs from resource destinations..."
       update_server_ids(coolify_team, api_data[:applications], api_data[:databases])
       
-      # Create resources (applications, services, databases)
-      Rails.logger.info "    Creating #{api_data[:applications].length} applications..."
+      # Upsert resources (applications, services, databases) and track UUIDs
+      Rails.logger.info "    Upserting #{api_data[:applications].length} applications..."
+      resource_uuids = []
       api_data[:applications].each_with_index do |app_data, index|
-        result = create_application(coolify_team, app_data)
-        counts[:applications] += 1 if result
-        counts[:environments] += 1 if result && result[:created_environment]
+        result = upsert_application(coolify_team, app_data)
+        if result
+          resource_uuids << app_data['uuid']
+          counts[:applications] += 1
+          counts[:environments] += 1 if result[:created_environment]
+        end
         Rails.logger.info "      ✓ App #{index + 1}/#{api_data[:applications].length}: #{app_data['name']}" if (index + 1) % 20 == 0 || index == api_data[:applications].length - 1
       end
 
-      Rails.logger.info "    Creating #{api_data[:services].length} services..."
+      Rails.logger.info "    Upserting #{api_data[:services].length} services..."
       api_data[:services].each_with_index do |service_data, index|
-        result = create_service(coolify_team, service_data)
-        counts[:services] += 1 if result
-        counts[:environments] += 1 if result && result[:created_environment]
+        result = upsert_service(coolify_team, service_data)
+        if result
+          resource_uuids << service_data['uuid']
+          counts[:services] += 1
+          counts[:environments] += 1 if result[:created_environment]
+        end
         Rails.logger.info "      ✓ Service #{index + 1}/#{api_data[:services].length}: #{service_data['name']}" if (index + 1) % 20 == 0 || index == api_data[:services].length - 1
       end
 
-      Rails.logger.info "    Creating #{api_data[:databases].length} databases..."
+      Rails.logger.info "    Upserting #{api_data[:databases].length} databases..."
       api_data[:databases].each_with_index do |db_data, index|
-        result = create_database(coolify_team, db_data)
-        counts[:databases] += 1 if result
-        counts[:environments] += 1 if result && result[:created_environment]
+        result = upsert_database(coolify_team, db_data)
+        if result
+          resource_uuids << db_data['uuid']
+          counts[:databases] += 1
+          counts[:environments] += 1 if result[:created_environment]
+        end
         Rails.logger.info "      ✓ Database #{index + 1}/#{api_data[:databases].length}: #{db_data['name']}" if (index + 1) % 20 == 0 || index == api_data[:databases].length - 1
+      end
+
+      # Delete servers that no longer exist in Coolify
+      deleted_servers = coolify_team.servers.where.not(uuid: server_uuids)
+      if deleted_servers.any?
+        Rails.logger.info "    🗑️  Deleting #{deleted_servers.count} servers removed from Coolify..."
+        deleted_servers.destroy_all
+      end
+
+      # Delete projects that no longer exist in Coolify
+      deleted_projects = coolify_team.projects.where.not(uuid: project_uuids)
+      if deleted_projects.any?
+        Rails.logger.info "    🗑️  Deleting #{deleted_projects.count} projects removed from Coolify..."
+        deleted_projects.destroy_all
+      end
+
+      # Delete resources that no longer exist in Coolify
+      deleted_resources = coolify_team.resources.where.not(uuid: resource_uuids)
+      if deleted_resources.any?
+        Rails.logger.info "    🗑️  Deleting #{deleted_resources.count} resources removed from Coolify..."
+        deleted_resources.destroy_all
       end
       
       Rails.logger.info "  ✅ Transaction complete!"
@@ -234,24 +254,30 @@ class CoolifySyncService
     counts
   end
 
-  # Create methods for each model
-  def create_team(coolify_team, data)
-    Team.create!(
+  # Upsert methods for each model
+  def upsert_team(coolify_team, data)
+    team = Team.find_or_initialize_by(
       coolify_team: coolify_team,
-      team_id: data['id'],
+      team_id: data['id']
+    )
+    team.assign_attributes(
       name: data['name'],
       description: data['description'],
       personal_team: data['personal_team'] || false,
       metadata: data
     )
+    team.save!
+    team
   end
 
-  def create_server(coolify_team, data)
+  def upsert_server(coolify_team, data)
     # Note: The /servers endpoint doesn't return the internal 'id' field
     # We'll add it later from application/database destination data
-    server = Server.create!(
+    server = Server.find_or_initialize_by(
       coolify_team: coolify_team,
-      uuid: data['uuid'],
+      uuid: data['uuid']
+    )
+    server.assign_attributes(
       name: data['name'],
       description: data['description'],
       ip: data['ip'],
@@ -270,9 +296,10 @@ class CoolifySyncService
       pk.name ||= key_name || "Key #{key_uuid}"
       pk.source = 'manual'
       pk.save!
-      server.update!(private_key: pk)
+      server.private_key = pk
     end
 
+    server.save!
     server
   end
   
@@ -300,27 +327,35 @@ class CoolifySyncService
     end
   end
 
-  def create_project(coolify_team, data)
-    Project.create!(
+  def upsert_project(coolify_team, data)
+    project = Project.find_or_initialize_by(
       coolify_team: coolify_team,
-      uuid: data['uuid'],
+      uuid: data['uuid']
+    )
+    project.assign_attributes(
       name: data['name'],
       description: data['description'],
       metadata: data.except('environments')
     )
+    project.save!
+    project
   end
 
-  def create_environment(project, data)
-    Environment.create!(
+  def upsert_environment(project, data)
+    environment = Environment.find_or_initialize_by(
       project: project,
-      environment_id: data['id'],
+      environment_id: data['id']
+    )
+    environment.assign_attributes(
       name: data['name'],
       description: data['description'],
       metadata: data
     )
+    environment.save!
+    environment
   end
 
-  def create_application(coolify_team, data)
+  def upsert_application(coolify_team, data)
     # Find server and environment
     server = coolify_team.servers.find_by(uuid: data['destination']['server']['uuid']) if data['destination']&.dig('server', 'uuid')
     
@@ -337,22 +372,25 @@ class CoolifySyncService
       return nil
     end
 
-    Application.create!(
+    application = Application.find_or_initialize_by(
       coolify_team: coolify_team,
+      uuid: data['uuid']
+    )
+    application.assign_attributes(
       server: server,
       environment: environment,
-      uuid: data['uuid'],
       name: data['name'],
       description: data['description'],
       status: data['status'],
       fqdn: data['fqdn'],
       metadata: extract_application_metadata(data)
     )
+    application.save!
     
     { created_environment: env_result[:created] }
   end
 
-  def create_service(coolify_team, data)
+  def upsert_service(coolify_team, data)
     # Services have server_id directly (not nested in destination like apps/databases)
     # Find server by Coolify's internal server_id stored in metadata
     server = nil
@@ -376,22 +414,25 @@ class CoolifySyncService
       return nil
     end
 
-    Service.create!(
+    service = Service.find_or_initialize_by(
       coolify_team: coolify_team,
+      uuid: data['uuid']
+    )
+    service.assign_attributes(
       server: server,
       environment: environment,
-      uuid: data['uuid'],
       name: data['name'],
       description: data['description'],
       status: data['status'],
       fqdn: nil,  # Services typically don't have a single FQDN
       metadata: extract_service_metadata(data)
     )
+    service.save!
     
     { created_environment: env_result[:created] }
   end
 
-  def create_database(coolify_team, data)
+  def upsert_database(coolify_team, data)
     # Find server and environment
     server = coolify_team.servers.find_by(uuid: data['destination']['server']['uuid']) if data['destination']&.dig('server', 'uuid')
     
@@ -408,17 +449,20 @@ class CoolifySyncService
       return nil
     end
 
-    CoolifyDatabase.create!(
+    database = CoolifyDatabase.find_or_initialize_by(
       coolify_team: coolify_team,
+      uuid: data['uuid']
+    )
+    database.assign_attributes(
       server: server,
       environment: environment,
-      uuid: data['uuid'],
       name: data['name'],
       description: data['description'],
       status: data['status'],
       fqdn: nil,  # Databases typically don't have FQDN unless public
       metadata: extract_database_metadata(data)
     )
+    database.save!
     
     { created_environment: env_result[:created] }
   end
@@ -435,13 +479,13 @@ class CoolifySyncService
       project = coolify_team.projects.find_by(uuid: environment_data['project']['uuid'])
       
       if project
-        new_env = Environment.create!(
-          project: project,
-          environment_id: environment_id,
-          name: environment_data['name'] || "Environment #{environment_id}",
-          description: environment_data['description'],
-          metadata: environment_data
-        )
+        env_data = {
+          'id' => environment_id,
+          'name' => environment_data['name'] || "Environment #{environment_id}",
+          'description' => environment_data['description']
+        }.merge(environment_data)
+        
+        new_env = upsert_environment(project, env_data)
         Rails.logger.info "        ➕ Created environment #{environment_id}: #{new_env.name}"
         return { environment: new_env, created: true }
       end
