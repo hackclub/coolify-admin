@@ -46,7 +46,12 @@ COPY . .
 RUN bundle exec bootsnap precompile app/ lib/
 
 # Precompiling assets for production without requiring secret RAILS_MASTER_KEY
-RUN SECRET_KEY_BASE_DUMMY=1 DATABASE_URL=postgresql://user:pass@localhost/dbname ./bin/rails assets:precompile
+RUN SECRET_KEY_BASE_DUMMY=1 \
+    DATABASE_URL=postgresql://user:pass@localhost/dbname \
+    ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=dummy_primary_key \
+    ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=dummy_deterministic_key \
+    ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=dummy_salt \
+    ./bin/rails assets:precompile
 
 
 
