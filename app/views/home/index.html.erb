@@ -223,7 +223,14 @@
                 <% total_disk = rstat ? (rstat.disk_runtime_bytes.to_i + rstat.disk_persistent_bytes.to_i) : 0 %>
                 <tr class="storage-row">
                   <td class="resource-name">
-                    <strong><%= resource.name %></strong>
+                    <div class="resource-name-row">
+                      <strong><%= resource.name %></strong>
+                      <% if resource.coolify_url %>
+                        <a href="<%= resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-chevron" title="Open in Coolify">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"></path></svg>
+                        </a>
+                      <% end %>
+                    </div>
                     <% if resource.metadata.dig('raw', 'fqdn').present? %>
                       <div class="resource-url">
                         <a href="<%= resource.metadata.dig('raw', 'fqdn').split(',').first %>" target="_blank" rel="noopener">
@@ -318,7 +325,14 @@
                 <% rstat = @latest_resource_stats[resource.id] %>
                 <tr class="cpu-row">
                   <td class="resource-name">
-                    <strong><%= resource.name %></strong>
+                    <div class="resource-name-row">
+                      <strong><%= resource.name %></strong>
+                      <% if resource.coolify_url %>
+                        <a href="<%= resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-chevron" title="Open in Coolify">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"></path></svg>
+                        </a>
+                      <% end %>
+                    </div>
                     <% if resource.metadata.dig('raw', 'fqdn').present? %>
                       <div class="resource-url">
                         <a href="<%= resource.metadata.dig('raw', 'fqdn').split(',').first %>" target="_blank" rel="noopener">
@@ -410,7 +424,14 @@
                 <% rstat = @latest_resource_stats[resource.id] %>
                 <tr class="ram-row">
                   <td class="resource-name">
-                    <strong><%= resource.name %></strong>
+                    <div class="resource-name-row">
+                      <strong><%= resource.name %></strong>
+                      <% if resource.coolify_url %>
+                        <a href="<%= resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-chevron" title="Open in Coolify">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"></path></svg>
+                        </a>
+                      <% end %>
+                    </div>
                     <% if resource.metadata.dig('raw', 'fqdn').present? %>
                       <div class="resource-url">
                         <a href="<%= resource.metadata.dig('raw', 'fqdn').split(',').first %>" target="_blank" rel="noopener">

@@ -37,5 +37,22 @@ class Resource < ApplicationRecord
   def domains
     fqdn&.split(',')&.map(&:strip) || []
   end
+
+  # Generate Coolify admin URL for this resource
+  def coolify_url
+    return nil unless coolify_team && environment && project
+    
+    resource_type = case self.class.name
+                    when 'Application' then 'application'
+                    when 'Service' then 'service'
+                    when 'CoolifyDatabase' then 'database'
+                    else return nil
+                    end
+    
+    # Try to get environment UUID from metadata, or fall back to environment_id
+    env_identifier = environment.metadata['uuid'] || environment.metadata['id'] || environment.environment_id
+    
+    "#{coolify_team.base_url}/project/#{project.uuid}/environment/#{env_identifier}/#{resource_type}/#{uuid}"
+  end
 end
 
