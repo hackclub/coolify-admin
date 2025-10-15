@@ -157,7 +157,7 @@
                                 <li class="tree-item resource-item">
                                   <div class="resource-type-label"><%= resource.type.sub('Coolify', '').downcase %></div>
                                   <div class="item-name resource-name">
-                                    <%= resource.name %>
+                                    <%= link_to resource.name, resource_path(resource), class: "resource-detail-link" %>
                                     <% if resource.status %>
                                       <span class="status <%= resource.status.include?('running') ? 'ok' : 'err' %>">
                                         <%= resource.status %>
@@ -224,7 +224,7 @@
                 <tr class="storage-row">
                   <td class="resource-name">
                     <div class="resource-name-row">
-                      <strong><%= resource.name %></strong>
+                      <strong><%= link_to resource.name, resource_path(resource), class: "resource-detail-link" %></strong>
                       <% if resource.coolify_url %>
                         <a href="<%= resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-chevron" title="Open in Coolify">
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"></path></svg>
@@ -326,7 +326,7 @@
                 <tr class="cpu-row">
                   <td class="resource-name">
                     <div class="resource-name-row">
-                      <strong><%= resource.name %></strong>
+                      <strong><%= link_to resource.name, resource_path(resource), class: "resource-detail-link" %></strong>
                       <% if resource.coolify_url %>
                         <a href="<%= resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-chevron" title="Open in Coolify">
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"></path></svg>
@@ -425,7 +425,7 @@
                 <tr class="ram-row">
                   <td class="resource-name">
                     <div class="resource-name-row">
-                      <strong><%= resource.name %></strong>
+                      <strong><%= link_to resource.name, resource_path(resource), class: "resource-detail-link" %></strong>
                       <% if resource.coolify_url %>
                         <a href="<%= resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-chevron" title="Open in Coolify">
                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"></path></svg>

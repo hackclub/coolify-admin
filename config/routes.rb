@@ -29,4 +29,7 @@ Rails.application.routes.draw do
   post "servers/:id/collect_stats", to: "metrics#collect_server_stats", as: :server_collect_stats
 
   resources :private_keys, only: [:edit, :update]
+  
+  # Resources detail pages
+  resources :resources, only: [:show]
 end

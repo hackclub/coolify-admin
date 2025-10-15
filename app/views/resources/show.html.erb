@@ -1,0 +1,665 @@
+<div class="resource-detail-page">
+  <!-- Resource Header -->
+  <div class="resource-detail-header">
+    <div class="resource-header-left">
+      <div class="resource-breadcrumb">
+        <%= link_to "← Back to Overview", root_path, class: "back-link" %>
+      </div>
+      <h1><%= @resource.name %></h1>
+      <div class="resource-meta-row">
+        <span class="resource-type-badge <%= @resource.type.downcase %>">
+          <%= @resource.type.sub('Coolify', '') %>
+        </span>
+        <% if @resource.status.present? %>
+          <span class="status-badge <%= @resource.status.start_with?('running') ? 'running' : 'stopped' %>">
+            <%= @resource.status %>
+          </span>
+        <% end %>
+        <% if @resource.coolify_url %>
+          <a href="<%= @resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-link">
+            Open in Coolify →
+          </a>
+        <% end %>
+      </div>
+      <% if @latest_stat %>
+        <div class="last-updated">
+          Last updated: <%= time_ago_in_words(@latest_stat.captured_at) %> ago
+        </div>
+      <% end %>
+    </div>
+    <div class="resource-header-actions">
+      <%= button_tag "🔄 Refresh", 
+          onclick: "window.location.reload()", 
+          class: "btn btn-secondary" %>
+      <% if @resource.server.private_key&.private_key.present? %>
+        <button class="btn btn-primary" data-action="collect-resource-stats" data-server-id="<%= @resource.server.id %>">
+          📊 Collect Stats Now
+        </button>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- Time Range Selector -->
+  <div class="time-range-selector">
+    <label>Time Range:</label>
+    <div class="time-range-buttons">
+      <%= link_to "1h", resource_path(@resource, time_range: '1h'), 
+          class: "time-btn #{@time_range == '1h' ? 'active' : ''}" %>
+      <%= link_to "6h", resource_path(@resource, time_range: '6h'), 
+          class: "time-btn #{@time_range == '6h' ? 'active' : ''}" %>
+      <%= link_to "24h", resource_path(@resource, time_range: '24h'), 
+          class: "time-btn #{@time_range == '24h' ? 'active' : ''}" %>
+      <%= link_to "7d", resource_path(@resource, time_range: '7d'), 
+          class: "time-btn #{@time_range == '7d' ? 'active' : ''}" %>
+      <%= link_to "30d", resource_path(@resource, time_range: '30d'), 
+          class: "time-btn #{@time_range == '30d' ? 'active' : ''}" %>
+    </div>
+  </div>
+
+  <% if @stats.empty? %>
+    <div class="empty-state-detail">
+      <div class="empty-state-icon">📊</div>
+      <h3>No Statistics Available Yet</h3>
+      <p>Stats are collected automatically every few minutes.</p>
+      <p>Once metrics are collected, you'll see beautiful charts and historical data here.</p>
+      <%= link_to "← Back to Overview", root_path, class: "btn btn-primary" %>
+    </div>
+  <% else %>
+    <!-- Stats Summary Cards -->
+    <div class="stats-summary-grid">
+      <div class="stat-summary-card cpu-card">
+        <div class="stat-card-header">
+          <span class="stat-icon">⚡</span>
+          <div class="stat-summary-label">CPU Usage</div>
+        </div>
+        <div class="stat-summary-value"><%= @latest_stat&.cpu_pct&.round(1) || 0 %>%</div>
+        <% if @stats_summary[:cpu_avg] %>
+          <div class="stat-summary-meta">
+            Avg: <%= @stats_summary[:cpu_avg] %>% | 
+            Max: <%= @stats_summary[:cpu_max]&.round(1) %>% | 
+            Min: <%= @stats_summary[:cpu_min]&.round(1) %>%
+          </div>
+        <% end %>
+      </div>
+
+      <div class="stat-summary-card memory-card">
+        <div class="stat-card-header">
+          <span class="stat-icon">🧠</span>
+          <div class="stat-summary-label">Memory Usage</div>
+        </div>
+        <div class="stat-summary-value">
+          <%= format_bytes(@latest_stat&.mem_used_bytes || 0) %>
+        </div>
+        <% if @stats_summary[:mem_avg] %>
+          <div class="stat-summary-meta">
+            Avg: <%= format_bytes(@stats_summary[:mem_avg]) %> | 
+            Max: <%= format_bytes(@stats_summary[:mem_max]) %>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="stat-summary-card disk-card">
+        <div class="stat-card-header">
+          <span class="stat-icon">💾</span>
+          <div class="stat-summary-label">Disk Usage</div>
+        </div>
+        <div class="stat-summary-value">
+          <%= format_bytes((@latest_stat&.disk_persistent_bytes.to_i || 0) + (@latest_stat&.disk_runtime_bytes.to_i || 0)) %>
+        </div>
+        <% if @latest_stat %>
+          <div class="stat-summary-meta">
+            Vol: <%= format_bytes(@latest_stat.disk_persistent_bytes || 0) %> | 
+            RW: <%= format_bytes(@latest_stat.disk_runtime_bytes || 0) %>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="stat-summary-card data-card">
+        <div class="stat-card-header">
+          <span class="stat-icon">📊</span>
+          <div class="stat-summary-label">Data Points</div>
+        </div>
+        <div class="stat-summary-value"><%= @stats_summary[:data_points] %></div>
+        <div class="stat-summary-meta">
+          Over <%= @time_range %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="charts-grid">
+      <!-- CPU Chart -->
+      <div class="chart-container">
+        <h3>CPU Usage Over Time</h3>
+        <canvas id="cpuChart"></canvas>
+      </div>
+
+      <!-- Memory Chart -->
+      <div class="chart-container">
+        <h3>Memory Usage Over Time</h3>
+        <canvas id="memoryChart"></canvas>
+      </div>
+
+      <!-- Disk Chart -->
+      <div class="chart-container">
+        <h3>Disk Usage Over Time</h3>
+        <canvas id="diskChart"></canvas>
+      </div>
+
+      <!-- Combined Overview Chart -->
+      <div class="chart-container">
+        <h3>Combined Overview</h3>
+        <canvas id="overviewChart"></canvas>
+      </div>
+    </div>
+  <% end %>
+
+  <% unless @stats.empty? %>
+    <!-- Historical Stats Table -->
+    <div class="historical-stats-section">
+      <h2>Recent Statistics (<%= @stats.count %> data points)</h2>
+      <div class="stats-table-container">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>CPU</th>
+              <th>Memory</th>
+              <th>Disk (Persistent)</th>
+              <th>Disk (Runtime)</th>
+              <th>Total Disk</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @stats.reverse_order.first(50).each do |stat| %>
+              <tr>
+                <td class="timestamp-cell">
+                  <%= stat.captured_at.strftime('%Y-%m-%d %H:%M:%S') %>
+                </td>
+                <td class="cpu-cell">
+                  <% if stat.cpu_pct %>
+                    <div class="stat-bar-container">
+                      <div class="stat-bar cpu-bar" style="width: <%= [stat.cpu_pct, 100].min %>%"></div>
+                      <span class="stat-value"><%= stat.cpu_pct.round(1) %>%</span>
+                    </div>
+                  <% else %>
+                    <span class="text-muted">-</span>
+                  <% end %>
+                </td>
+                <td class="memory-cell">
+                  <%= format_bytes(stat.mem_used_bytes || 0) %>
+                </td>
+                <td><%= format_bytes(stat.disk_persistent_bytes || 0) %></td>
+                <td><%= format_bytes(stat.disk_runtime_bytes || 0) %></td>
+                <td class="total-disk-cell">
+                  <%= format_bytes((stat.disk_persistent_bytes.to_i + stat.disk_runtime_bytes.to_i)) %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <% if @stats.count > 50 %>
+        <p class="table-note">Showing latest 50 of <%= @stats.count %> data points</p>
+      <% end %>
+    </div>
+  <% end %>
+
+  <!-- Resource Details Section -->
+  <div class="resource-details-section">
+    <h2>Resource Details</h2>
+    
+    <div class="details-grid">
+      <div class="detail-group">
+        <h3>Basic Information</h3>
+        <dl class="detail-list">
+          <dt>Name</dt>
+          <dd><%= @resource.name %></dd>
+          
+          <dt>Type</dt>
+          <dd><%= @resource.type.sub('Coolify', '') %></dd>
+          
+          <dt>UUID</dt>
+          <dd class="monospace"><%= @resource.uuid %></dd>
+          
+          <dt>Status</dt>
+          <dd>
+            <% if @resource.status.present? %>
+              <span class="status-badge <%= @resource.status.start_with?('running') ? 'running' : 'stopped' %>">
+                <%= @resource.status %>
+              </span>
+            <% else %>
+              <span class="text-muted">Unknown</span>
+            <% end %>
+          </dd>
+          
+          <% if @resource.description.present? %>
+            <dt>Description</dt>
+            <dd><%= @resource.description %></dd>
+          <% end %>
+        </dl>
+      </div>
+
+      <div class="detail-group">
+        <h3>Location</h3>
+        <dl class="detail-list">
+          <dt>Team</dt>
+          <dd><%= @resource.coolify_team.name %></dd>
+          
+          <dt>Server</dt>
+          <dd>
+            <%= @resource.server.name %>
+            <span class="text-muted">(<%= @resource.server.ip %>)</span>
+          </dd>
+          
+          <dt>Project</dt>
+          <dd><%= @resource.project.name %></dd>
+          
+          <dt>Environment</dt>
+          <dd><%= @resource.environment.name %></dd>
+        </dl>
+      </div>
+
+      <% if @resource.has_domains? %>
+        <div class="detail-group">
+          <h3>Domains</h3>
+          <ul class="domains-list">
+            <% @resource.domains.each do |domain| %>
+              <li>
+                <a href="<%= domain.start_with?('http') ? domain : "https://#{domain}" %>" 
+                   target="_blank" rel="noopener">
+                  <%= domain %>
+                </a>
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <% if @resource.metadata.present? && @resource.metadata.any? %>
+        <div class="detail-group metadata-group">
+          <h3>Additional Metadata</h3>
+          <div class="metadata-content">
+            <pre><%= JSON.pretty_generate(@resource.metadata) %></pre>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<script>
+// Handle collect stats button
+document.addEventListener('DOMContentLoaded', function() {
+  const collectBtn = document.querySelector('[data-action="collect-resource-stats"]');
+  if (collectBtn) {
+    collectBtn.addEventListener('click', async function() {
+      const serverId = this.getAttribute('data-server-id');
+      const button = this;
+      
+      button.disabled = true;
+      const prevText = button.textContent;
+      button.textContent = '⏳ Collecting...';
+      
+      try {
+        const resp = await fetch(`/servers/${serverId}/collect_stats`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+          }
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+          alert('✅ Stats collection started!\n\nThe page will refresh in a few seconds to show updated data.');
+          setTimeout(() => {
+            window.location.reload();
+          }, 3000);
+        } else {
+          alert(`❌ Failed: ${result.error}`);
+          button.disabled = false;
+          button.textContent = prevText;
+        }
+      } catch (e) {
+        alert(`Network error: ${e.message}`);
+        button.disabled = false;
+        button.textContent = prevText;
+      }
+    });
+  }
+});
+</script>
+
+<% unless @stats.empty? %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script>
+(function() {
+  // Function to initialize charts
+  function initCharts() {
+    if (typeof Chart === 'undefined') {
+      console.error('Chart.js failed to load');
+      return;
+    }
+  
+    // Chart.js configuration
+    Chart.defaults.font.family = "'SF Mono', 'Monaco', 'Consolas', monospace";
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = '#666';
+    
+    const chartData = <%= raw @chart_data.to_json %>;
+    const timeRange = '<%= params[:time_range] || '24h' %>';
+  
+  // Calculate time range boundaries
+  function getTimeRangeBounds() {
+    const now = new Date();
+    const timeRangeMap = {
+      '1h': 1 * 60 * 60 * 1000,
+      '6h': 6 * 60 * 60 * 1000,
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000
+    };
+    
+    const milliseconds = timeRangeMap[timeRange] || timeRangeMap['24h'];
+    const startTime = new Date(now - milliseconds);
+    
+    return {
+      min: startTime,
+      max: now
+    };
+  }
+  
+  const timeBounds = getTimeRangeBounds();
+  
+  // Format timestamp for display
+  function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  }
+  
+  // Format bytes for display
+  function formatBytes(bytes) {
+    if (bytes === null || bytes === undefined) return 'N/A';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    return size.toFixed(2) + ' ' + units[unitIndex];
+  }
+  
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: true,
+    aspectRatio: 2.5,
+    devicePixelRatio: Math.max(window.devicePixelRatio || 1, 3),
+    interaction: {
+      intersect: false,
+      mode: 'index'
+    },
+    plugins: {
+      legend: {
+        display: true,
+        position: 'top'
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        padding: 12,
+        titleFont: { size: 12, weight: 'bold' },
+        bodyFont: { size: 11 },
+        callbacks: {
+          title: function(context) {
+            return formatTime(context[0].parsed.x);
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        type: 'time',
+        min: timeBounds.min,
+        max: timeBounds.max,
+        time: {
+          unit: '<%= @time_range == '1h' || @time_range == '6h' ? 'minute' : 'hour' %>',
+          displayFormats: {
+            minute: 'HH:mm',
+            hour: 'MMM d, HH:mm'
+          }
+        },
+        grid: {
+          color: '#e5e7eb'
+        }
+      },
+      y: {
+        beginAtZero: true,
+        grid: {
+          color: '#e5e7eb'
+        }
+      }
+    }
+  };
+  
+  // CPU Chart
+  new Chart(document.getElementById('cpuChart'), {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [{
+        label: 'CPU Usage (%)',
+        data: chartData.timestamps.map((t, i) => ({ x: t, y: chartData.cpu[i] })),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 2,
+        pointHoverRadius: 5
+      }]
+    },
+    options: {
+      ...commonOptions,
+      scales: {
+        ...commonOptions.scales,
+        y: {
+          ...commonOptions.scales.y,
+          max: 100,
+          ticks: {
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      }
+    }
+  });
+  
+  // Memory Chart
+  new Chart(document.getElementById('memoryChart'), {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [
+        {
+          label: 'Memory Usage',
+          data: chartData.timestamps.map((t, i) => ({ x: t, y: chartData.memory_bytes[i] })),
+          borderColor: '#8b5cf6',
+          backgroundColor: 'rgba(139, 92, 246, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5
+        }
+      ]
+    },
+    options: {
+      ...commonOptions,
+      scales: {
+        ...commonOptions.scales,
+        y: {
+          ...commonOptions.scales.y,
+          ticks: {
+            callback: function(value) {
+              return formatBytes(value);
+            }
+          }
+        }
+      },
+      plugins: {
+        ...commonOptions.plugins,
+        tooltip: {
+          ...commonOptions.plugins.tooltip,
+          callbacks: {
+            ...commonOptions.plugins.tooltip.callbacks,
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (label) {
+                label += ': ';
+              }
+              if (context.parsed.y !== null) {
+                label += formatBytes(context.parsed.y);
+              }
+              return label;
+            }
+          }
+        }
+      }
+    }
+  });
+  
+  // Disk Chart
+  new Chart(document.getElementById('diskChart'), {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [
+        {
+          label: 'Persistent Storage',
+          data: chartData.timestamps.map((t, i) => ({ x: t, y: chartData.disk_persistent[i] })),
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5
+        },
+        {
+          label: 'Runtime Storage',
+          data: chartData.timestamps.map((t, i) => ({ x: t, y: chartData.disk_runtime[i] })),
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5
+        },
+        {
+          label: 'Total Storage',
+          data: chartData.timestamps.map((t, i) => ({ x: t, y: chartData.disk_total[i] })),
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: false,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          borderWidth: 2
+        }
+      ]
+    },
+    options: {
+      ...commonOptions,
+      scales: {
+        ...commonOptions.scales,
+        y: {
+          ...commonOptions.scales.y,
+          ticks: {
+            callback: function(value) {
+              return formatBytes(value);
+            }
+          }
+        }
+      },
+      plugins: {
+        ...commonOptions.plugins,
+        tooltip: {
+          ...commonOptions.plugins.tooltip,
+          callbacks: {
+            ...commonOptions.plugins.tooltip.callbacks,
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (label) {
+                label += ': ';
+              }
+              if (context.parsed.y !== null) {
+                label += formatBytes(context.parsed.y);
+              }
+              return label;
+            }
+          }
+        }
+      }
+    }
+  });
+  
+  // Combined Overview Chart
+  new Chart(document.getElementById('overviewChart'), {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [
+        {
+          label: 'CPU %',
+          data: chartData.timestamps.map((t, i) => ({ x: t, y: chartData.cpu[i] })),
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.05)',
+          fill: false,
+          tension: 0.4,
+          pointRadius: 1,
+          pointHoverRadius: 4
+        }
+      ]
+    },
+    options: {
+      ...commonOptions,
+      scales: {
+        ...commonOptions.scales,
+        y: {
+          ...commonOptions.scales.y,
+          max: 100,
+          ticks: {
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      }
+    }
+  });
+  } // End initCharts
+  
+  // Wait for Chart.js to be loaded, then initialize charts
+  function waitForChart() {
+    if (typeof Chart !== 'undefined') {
+      initCharts();
+    } else {
+      setTimeout(waitForChart, 50);
+    }
+  }
+  
+  // Run chart initialization
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitForChart);
+  } else {
+    waitForChart();
+  }
+})();
+</script>
+<% end %>
+
