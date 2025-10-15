@@ -21,10 +21,3 @@ class CreateServerStats < ActiveRecord::Migration[8.0]
     add_index :server_stats, [:server_id, :captured_at]
   end
 end
-
-
-
-
-
-
-

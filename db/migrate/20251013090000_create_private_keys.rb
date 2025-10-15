@@ -16,10 +16,3 @@ class CreatePrivateKeys < ActiveRecord::Migration[8.0]
     add_index :private_keys, [:coolify_team_id, :name]
   end
 end
-
-
-
-
-
-
-

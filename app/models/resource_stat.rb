@@ -4,10 +4,3 @@ class ResourceStat < ApplicationRecord
 
   validates :captured_at, presence: true
 end
-
-
-
-
-
-
-

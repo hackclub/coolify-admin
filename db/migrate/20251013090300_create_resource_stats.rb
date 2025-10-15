@@ -17,10 +17,3 @@ class CreateResourceStats < ActiveRecord::Migration[8.0]
     add_index :resource_stats, [:resource_id, :captured_at]
   end
 end
-
-
-
-
-
-
-

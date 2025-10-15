@@ -3,10 +3,3 @@ class AddPrivateKeyToServers < ActiveRecord::Migration[8.0]
     add_reference :servers, :private_key, foreign_key: true, index: true
   end
 end
-
-
-
-
-
-
-
