@@ -448,6 +448,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   };
   
+  // Calculate CPU max (minimum 100, but scale higher if needed)
+  const cpuMax = Math.ceil(Math.max(100, ...chartData.cpu.filter(v => v !== null).map(v => v * 1.1))); // 10% padding above max, rounded up
+  
   // CPU Chart
   new Chart(document.getElementById('cpuChart'), {
     type: 'line',
@@ -470,7 +473,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ...commonOptions.scales,
         y: {
           ...commonOptions.scales.y,
-          max: 100,
+          max: cpuMax,
           ticks: {
             callback: function(value) {
               return value + '%';
@@ -632,7 +635,7 @@ document.addEventListener('DOMContentLoaded', function() {
         ...commonOptions.scales,
         y: {
           ...commonOptions.scales.y,
-          max: 100,
+          max: cpuMax,
           ticks: {
             callback: function(value) {
               return value + '%';
