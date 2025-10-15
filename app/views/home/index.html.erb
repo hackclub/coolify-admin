@@ -489,12 +489,12 @@ document.addEventListener('DOMContentLoaded', function() {
     syncBtn.addEventListener('click', async function() {
       // Disable button and show loading state
       syncBtn.disabled = true;
-      syncBtn.textContent = '⏳ Syncing...';
+      syncBtn.textContent = '⏳ Queuing...';
       
       // Show status div
       syncStatus.style.display = 'block';
       syncStatus.className = 'sync-status syncing';
-      syncStatus.textContent = 'Syncing data from Coolify API...';
+      syncStatus.textContent = 'Queueing sync job...';
 
       try {
         const response = await fetch('/sync', {
@@ -509,15 +509,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (result.success) {
           syncStatus.className = 'sync-status success';
-          syncStatus.innerHTML = buildSuccessMessage(result);
+          syncStatus.innerHTML = `
+            <div class="sync-success">✅ Sync job queued successfully!</div>
+            <div class="sync-details">
+              <p>${result.message}</p>
+              <p>The sync is running in the background. View progress in the <a href="/jobs" target="_blank">Job Dashboard</a>.</p>
+              <p class="reload-notice">Refreshing page in 3 seconds...</p>
+            </div>
+          `;
           
-          // Reload page after 2 seconds to show fresh data
+          // Reload page after 3 seconds to show updated data (if job completes quickly)
           setTimeout(() => {
             window.location.reload();
-          }, 2000);
+          }, 3000);
         } else {
           syncStatus.className = 'sync-status error';
-          syncStatus.innerHTML = buildErrorMessage(result);
+          syncStatus.innerHTML = `<div class="sync-error">❌ Failed to queue sync job: ${result.error || 'Unknown error'}</div>`;
           
           // Re-enable button on error
           syncBtn.disabled = false;
