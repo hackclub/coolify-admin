@@ -7,6 +7,7 @@ A Rails 8.0.3 application with Docker support.
 - **Rails 8.0.3** - Latest Rails version
 - **Hotwire** - Turbo and Stimulus for modern, reactive UIs
 - **Solid Gems** - SolidCache, SolidQueue, and SolidCable
+- **TimescaleDB** - Time-series database for efficient metrics storage with automatic compression
 - **PostgreSQL** - Production-ready database (in Docker)
 - **SQLite3** - Fallback for local development
 - **Kamal** - Docker-based deployment tool

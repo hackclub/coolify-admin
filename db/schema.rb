@@ -10,9 +10,10 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_10_13_234441) do
+ActiveRecord::Schema[8.0].define(version: 2025_10_16_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+  enable_extension "timescaledb"
 
   create_table "coolify_teams", force: :cascade do |t|
     t.string "name", null: false
@@ -69,7 +70,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_234441) do
     t.index ["uuid"], name: "index_projects_on_uuid"
   end
 
-  create_table "resource_stats", force: :cascade do |t|
+  create_table "resource_stats", primary_key: ["id", "captured_at"], force: :cascade do |t|
+    t.bigserial "id", null: false
     t.bigint "resource_id", null: false
     t.bigint "server_id", null: false
     t.datetime "captured_at", null: false
@@ -81,6 +83,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_234441) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "mem_limit_bytes"
+    t.index ["captured_at"], name: "resource_stats_captured_at_idx", order: :desc
     t.index ["resource_id", "captured_at"], name: "index_resource_stats_on_resource_id_and_captured_at"
     t.index ["resource_id"], name: "index_resource_stats_on_resource_id"
     t.index ["server_id"], name: "index_resource_stats_on_server_id"
@@ -110,7 +113,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_234441) do
     t.index ["uuid"], name: "index_resources_on_uuid"
   end
 
-  create_table "server_stats", force: :cascade do |t|
+  create_table "server_stats", primary_key: ["id", "captured_at"], force: :cascade do |t|
+    t.bigserial "id", null: false
     t.bigint "server_id", null: false
     t.datetime "captured_at", null: false
     t.float "cpu_pct"
@@ -126,6 +130,7 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_234441) do
     t.jsonb "filesystems", default: [], null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["captured_at"], name: "server_stats_captured_at_idx", order: :desc
     t.index ["server_id", "captured_at"], name: "index_server_stats_on_server_id_and_captured_at"
     t.index ["server_id"], name: "index_server_stats_on_server_id"
   end
@@ -176,4 +181,6 @@ ActiveRecord::Schema[8.0].define(version: 2025_10_13_234441) do
   add_foreign_key "servers", "coolify_teams"
   add_foreign_key "servers", "private_keys"
   add_foreign_key "teams", "coolify_teams"
+  create_hypertable "resource_stats", time_column: "captured_at", chunk_time_interval: "7 days", compress_segmentby: "resource_id, server_id", compress_orderby: "captured_at DESC", compress_after: "P7D"
+  create_hypertable "server_stats", time_column: "captured_at", chunk_time_interval: "7 days", compress_segmentby: "server_id", compress_orderby: "captured_at DESC", compress_after: "P7D"
 end

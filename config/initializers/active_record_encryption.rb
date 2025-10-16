@@ -2,11 +2,19 @@
 
 # Configure Active Record Encryption
 # These keys MUST be set in environment variables for security
-Rails.application.configure do
+
+# For Rails 8, we need to configure this early, before the application is configured
+ActiveSupport.on_load(:active_record) do
   begin
-    config.active_record.encryption.primary_key = ENV.fetch("ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY")
-    config.active_record.encryption.deterministic_key = ENV.fetch("ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY")
-    config.active_record.encryption.key_derivation_salt = ENV.fetch("ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT")
+    primary_key = ENV.fetch("ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY")
+    deterministic_key = ENV.fetch("ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY")
+    key_derivation_salt = ENV.fetch("ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT")
+    
+    ActiveRecord::Encryption.configure(
+      primary_key: primary_key,
+      deterministic_key: deterministic_key,
+      key_derivation_salt: key_derivation_salt
+    )
   rescue KeyError => e
     raise <<~ERROR
       
