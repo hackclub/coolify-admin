@@ -1187,6 +1187,47 @@ body {
   flex-wrap: wrap;
 }
 
+/* Server Specs Summary */
+.server-specs-summary {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.spec-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+}
+
+.spec-icon {
+  font-size: 1.2rem;
+}
+
+.spec-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.spec-item strong {
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+/* Chart Spec Labels */
+.chart-spec {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #666;
+  margin-left: 0.5rem;
+}
+
 .status-badge {
   display: inline-block;
   padding: 0.3rem 0.8rem;

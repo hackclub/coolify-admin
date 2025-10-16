@@ -99,7 +99,7 @@
               <% coolify_team.servers.each do |server| %>
                 <li class="tree-item server-item">
                   <div class="item-name server-name">
-                    <%= server.name %>
+                    <%= link_to server.name, server_path(server), class: "server-detail-link" %>
                     <% if server.is_reachable %>
                       <span class="badge badge-success">up</span>
                     <% else %>

@@ -32,4 +32,7 @@ Rails.application.routes.draw do
   
   # Resources detail pages
   resources :resources, only: [:show]
+  
+  # Server detail pages
+  resources :servers, only: [:show]
 end
