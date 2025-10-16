@@ -1,0 +1,646 @@
+#!/usr/bin/env ruby
+require "uri"
+require "fileutils"
+
+# Database Mirror Script
+# Safely mirror production database to local development, excluding encrypted fields
+
+class DatabaseMirror
+  ENCRYPTED_COLUMNS = {
+    "coolify_teams" => ["token"],
+    "private_keys" => ["private_key"]
+  }.freeze
+
+  def initialize
+    @prod_url = ENV["PROD_DATABASE_URL"]
+    @local_url = ENV["DATABASE_URL"]
+  end
+
+  def run
+    validate_environment!
+    check_tools!
+    parse_connections!
+    show_warning!
+    confirm_or_exit!
+    mirror_database!
+    clear_encrypted_fields!
+    clear_auxiliary_databases!
+    show_success!
+  end
+
+  private
+
+  def validate_environment!
+    if @prod_url.nil? || @prod_url.empty?
+      error "PROD_DATABASE_URL environment variable is not set"
+      puts "\nUsage:"
+      puts "  PROD_DATABASE_URL=postgresql://user:pass@host:port/dbname bin/mirror_db"
+      exit 1
+    end
+
+    if @local_url.nil? || @local_url.empty?
+      error "DATABASE_URL environment variable is not set"
+      puts "\nPlease ensure your local environment is configured properly."
+      exit 1
+    end
+  end
+
+  def check_tools!
+    unless command_exists?("pg_dump")
+      error "pg_dump is not available. Please install PostgreSQL client tools."
+      exit 1
+    end
+
+    unless command_exists?("psql")
+      error "psql is not available. Please install PostgreSQL client tools."
+      exit 1
+    end
+  end
+
+  def parse_connections!
+    @prod_uri = URI.parse(@prod_url)
+    @local_uri = URI.parse(@local_url)
+
+    # Validate URIs
+    [@prod_uri, @local_uri].each do |uri|
+      if uri.scheme != "postgresql" && uri.scheme != "postgres"
+        error "Invalid database URL scheme: #{uri.scheme}. Expected postgresql://"
+        exit 1
+      end
+    end
+  rescue URI::InvalidURIError => e
+    error "Invalid database URL: #{e.message}"
+    exit 1
+  end
+
+  def show_warning!
+    puts "\n" + "=" * 70
+    puts "  DATABASE MIRROR WARNING"
+    puts "=" * 70
+    puts
+    puts "This script will:"
+    puts
+    puts "  1. OVERWRITE your local database with production data"
+    puts "     From: #{mask_password(@prod_url)}"
+    puts "     To:   #{mask_password(@local_url)}"
+    puts
+    puts "  2. PRESERVE your local encrypted credentials:"
+    ENCRYPTED_COLUMNS.each do |table, columns|
+      columns.each do |column|
+        puts "     - #{table}.#{column} (backed up and restored)"
+      end
+    end
+    puts
+    puts "  3. CLEAR all data from auxiliary databases:"
+    puts "     - Cache database (solid_cache tables)"
+    puts "     - Queue database (solid_queue tables)"
+    puts "     - Cable database (solid_cable tables)"
+    puts
+    puts "=" * 70
+    puts
+  end
+
+  def confirm_or_exit!
+    print "Type 'yes' to proceed: "
+    response = $stdin.gets&.chomp
+
+    unless response == "yes"
+      puts "\nAborted. No changes were made."
+      exit 0
+    end
+
+    puts
+  end
+
+  def mirror_database!
+    step "Mirroring database from production..."
+
+    # Save local encrypted credentials before dropping
+    info "Backing up local private keys and API tokens..."
+    @local_credentials = backup_local_credentials
+
+    # Drop and recreate the local database to avoid TimescaleDB conflicts
+    info "Dropping and recreating local database..."
+    drop_and_recreate_database!
+
+    # Build pg_dump command (without --clean since we already recreated)
+    # Exclude TimescaleDB hypertable data - we'll copy that separately
+    dump_cmd = build_pg_dump_command(@prod_uri, exclude_hypertables: true)
+    
+    # Build psql restore command
+    restore_cmd = build_psql_command(@local_uri)
+
+    # Execute dump and restore with pipe
+    info "Dumping from production and restoring to local database..."
+    info "This may take several minutes depending on database size..."
+    
+    success = system("#{dump_cmd} | #{restore_cmd} 2>&1 | grep -v 'already exists\\|does not exist\\|WARNING'")
+
+    unless success
+      error "Database dump/restore failed!"
+      exit 1
+    end
+
+    success_msg "Database mirrored successfully"
+    
+    # Copy TimescaleDB hypertable data separately
+    copy_hypertable_data!
+  end
+
+  def copy_hypertable_data!
+    step "Copying TimescaleDB hypertable data..."
+
+    # TimescaleDB hypertables need special handling
+    # Use direct COPY commands since pg_dump doesn't handle hypertables well
+    hypertables = ['server_stats', 'resource_stats']
+    
+    hypertables.each do |table|
+      info "Copying #{table} data..."
+      
+      # Get column list for the table
+      columns_sql = <<~SQL.strip.gsub("\n", " ")
+        SELECT string_agg(column_name, ', ' ORDER BY ordinal_position)
+        FROM information_schema.columns
+        WHERE table_name = '#{table}' AND table_schema = 'public';
+      SQL
+      columns = execute_sql_with_output(@prod_uri, columns_sql).strip
+      
+      # Create a temporary file path for the data
+      temp_file = "/tmp/#{table}_copy.sql"
+      
+      # Export data from production using COPY TO STDOUT, then import to local
+      # Use a simpler approach with properly quoted SQL
+      prod_host = @prod_uri.host
+      prod_port = @prod_uri.port
+      prod_user = @prod_uri.user
+      prod_pass = @prod_uri.password
+      prod_db = @prod_uri.path[1..]
+      
+      local_host = @local_uri.host
+      local_port = @local_uri.port
+      local_user = @local_uri.user
+      local_pass = @local_uri.password
+      local_db = @local_uri.path[1..]
+      
+      # Build the pipe command using bash process substitution to avoid shell issues
+      # Export data from production
+      export_cmd = "PGPASSWORD='#{prod_pass}' psql -h #{prod_host} -p #{prod_port} -U #{prod_user} -d #{prod_db} <<'EOF'\nCOPY (SELECT * FROM #{table}) TO STDOUT;\nEOF"
+      
+      # Import to local with triggers disabled
+      import_cmd = "PGPASSWORD='#{local_pass}' psql -h #{local_host} -p #{local_port} -U #{local_user} -d #{local_db} <<'EOF'\nSET session_replication_role = replica;\nCOPY #{table} FROM STDIN;\nSET session_replication_role = DEFAULT;\nEOF"
+      
+      # Use bash to execute the pipe
+      full_cmd = "bash -c \"#{export_cmd.gsub('"', '\\"')} | #{import_cmd.gsub('"', '\\"')}\""
+      
+      # Copy the data via pipe
+      result = `#{full_cmd} 2>&1 | grep -v 'WARNING'`
+      
+      # Show errors if any
+      unless result.strip.empty?
+        result.each_line do |line|
+          next if line.include?('COPY')
+          warn "  #{line.strip}" unless line.strip.empty?
+        end
+      end
+      
+      # Count rows copied
+      count_sql = "SELECT COUNT(*) FROM #{table};"
+      count_output = execute_sql_with_output(@local_uri, count_sql)
+      count = count_output.strip
+      info "  Copied #{count} rows to #{table}"
+    end
+
+    success_msg "TimescaleDB hypertable data copied"
+  end
+
+  def clear_encrypted_fields!
+    step "Restoring local encrypted credentials..."
+
+    # Restore local API tokens
+    if @local_credentials[:api_tokens] && !@local_credentials[:api_tokens].empty?
+      @local_credentials[:api_tokens].each do |token_data|
+        info "Restoring API token for #{token_data[:name]}..."
+        sql = <<~SQL.strip.gsub("\n", " ")
+          UPDATE coolify_teams 
+          SET token = #{escape_string(token_data[:token])} 
+          WHERE id = #{token_data[:id]};
+        SQL
+        execute_sql(@local_uri, sql)
+      end
+    else
+      info "No local API tokens to restore (production tokens kept but won't decrypt)"
+    end
+
+    # Restore local private keys
+    if @local_credentials[:private_keys] && !@local_credentials[:private_keys].empty?
+      @local_credentials[:private_keys].each do |key_data|
+        info "Restoring private key for #{key_data[:name]}..."
+        sql = <<~SQL.strip.gsub("\n", " ")
+          UPDATE private_keys 
+          SET private_key = #{escape_string(key_data[:private_key])} 
+          WHERE id = #{key_data[:id]};
+        SQL
+        execute_sql(@local_uri, sql)
+      end
+    else
+      info "No local private keys to restore (production keys kept but won't decrypt)"
+    end
+
+    success_msg "Local encrypted credentials restored"
+  end
+
+  def clear_auxiliary_databases!
+    step "Clearing auxiliary databases..."
+
+    # Get database URLs for cache, queue, and cable
+    cache_url = get_auxiliary_db_url("cache")
+    queue_url = get_auxiliary_db_url("queue")
+    cable_url = get_auxiliary_db_url("cable")
+
+    # Clear cache database
+    if cache_url
+      info "Clearing cache database..."
+      clear_solid_cache(cache_url)
+    end
+
+    # Clear queue database
+    if queue_url
+      info "Clearing queue database..."
+      clear_solid_queue(queue_url)
+    end
+
+    # Clear cable database
+    if cable_url
+      info "Clearing cable database..."
+      clear_solid_cable(cable_url)
+    end
+
+    success_msg "Auxiliary databases cleared"
+  end
+
+  def get_auxiliary_db_url(type)
+    # For development, construct the URL based on DATABASE_URL
+    # This matches the pattern in config/database.yml
+    case type
+    when "cache"
+      @local_url.sub(/\/coolify_admin_development$/, '/coolify_admin_development_cache')
+    when "queue"
+      @local_url.sub(/\/coolify_admin_development$/, '/coolify_admin_development_queue')
+    when "cable"
+      @local_url.sub(/\/coolify_admin_development$/, '/coolify_admin_development_cable')
+    end
+  end
+
+  def clear_solid_cache(db_url)
+    uri = URI.parse(db_url)
+    # Drop and recreate cache database to clear it
+    drop_and_recreate_aux_database!(uri, "cache")
+  rescue => e
+    warn "Could not clear cache database: #{e.message}"
+  end
+
+  def clear_solid_queue(db_url)
+    uri = URI.parse(db_url)
+    # Drop and recreate queue database to clear it
+    drop_and_recreate_aux_database!(uri, "queue")
+  rescue => e
+    warn "Could not clear queue database: #{e.message}"
+  end
+
+  def clear_solid_cable(db_url)
+    uri = URI.parse(db_url)
+    # Drop and recreate cable database to clear it
+    drop_and_recreate_aux_database!(uri, "cable")
+  rescue => e
+    warn "Could not clear cable database: #{e.message}"
+  end
+
+  def drop_and_recreate_aux_database!(uri, db_type)
+    db_name = uri.path[1..]  # Remove leading slash
+    
+    # Connect to postgres database to drop/create
+    postgres_uri = uri.dup
+    postgres_uri.path = "/postgres"
+    
+    # Drop database
+    sql = "DROP DATABASE IF EXISTS #{db_name};"
+    execute_sql_on_postgres(postgres_uri, sql)
+    
+    # Create database
+    sql = "CREATE DATABASE #{db_name};"
+    execute_sql_on_postgres(postgres_uri, sql)
+  end
+
+  def show_success!
+    puts
+    puts "=" * 70
+    puts "  SUCCESS!"
+    puts "=" * 70
+    puts
+    puts "Your local database has been mirrored from production."
+    puts
+    puts "Notes:"
+    puts "  - Local encrypted credentials preserved (API tokens & private keys)"
+    puts "  - Auxiliary databases (cache/queue/cable) have been cleared"
+    puts "  - You may need to restart your development server"
+    puts
+    puts "=" * 70
+    puts
+  end
+
+  # Helper methods
+
+  def backup_local_credentials
+    credentials = {
+      api_tokens: [],
+      private_keys: []
+    }
+
+    # Backup API tokens from coolify_teams
+    begin
+      sql = "SELECT id, name, token FROM coolify_teams WHERE token IS NOT NULL;"
+      output = execute_sql_with_output(@local_uri, sql)
+      
+      output.split("\n").each do |line|
+        # Skip headers and separators
+        next if line.strip.empty? || line.include?("---") || line.include?("id|")
+        next if line.include?("row") # Skip result count lines
+        
+        parts = line.split("|").map(&:strip)
+        next if parts.length < 3
+        
+        credentials[:api_tokens] << {
+          id: parts[0].to_i,
+          name: parts[1],
+          token: parts[2]
+        }
+      end
+      info "  Found #{credentials[:api_tokens].length} API token(s) to preserve"
+    rescue => e
+      warn "Could not backup API tokens: #{e.message}"
+    end
+
+    # Backup private keys
+    begin
+      sql = "SELECT id, name, private_key FROM private_keys WHERE private_key IS NOT NULL;"
+      output = execute_sql_with_output(@local_uri, sql)
+      
+      output.split("\n").each do |line|
+        # Skip headers and separators
+        next if line.strip.empty? || line.include?("---") || line.include?("id|")
+        next if line.include?("row") # Skip result count lines
+        
+        parts = line.split("|").map(&:strip)
+        next if parts.length < 3
+        
+        credentials[:private_keys] << {
+          id: parts[0].to_i,
+          name: parts[1],
+          private_key: parts[2]
+        }
+      end
+      info "  Found #{credentials[:private_keys].length} private key(s) to preserve"
+    rescue => e
+      warn "Could not backup private keys: #{e.message}"
+    end
+
+    credentials
+  end
+
+  def execute_sql_with_output(uri, sql)
+    cmd = ["psql"]
+    cmd << "--host=#{uri.host}" if uri.host
+    cmd << "--port=#{uri.port}" if uri.port
+    cmd << "--username=#{uri.user}" if uri.user
+    cmd << "--no-password"
+    cmd << "--tuples-only"
+    cmd << "--no-align"
+    cmd << "--field-separator=|"
+    cmd << "--command=#{shell_escape(sql)}"
+    cmd << uri.path[1..]  # Remove leading slash from path
+
+    # Set password via environment variable
+    full_cmd = if uri.password
+      "PGPASSWORD=#{shell_escape(uri.password)} #{cmd.join(' ')}"
+    else
+      cmd.join(' ')
+    end
+
+    output = `#{full_cmd} 2>/dev/null`
+    output
+  end
+
+  def escape_string(str)
+    return "NULL" if str.nil?
+    # Use dollar quoting to avoid escaping issues
+    "$$#{str}$$"
+  end
+
+  def drop_and_recreate_database!
+    db_name = @local_uri.path[1..]  # Remove leading slash
+    
+    # Connect to postgres database to drop/create
+    postgres_uri = @local_uri.dup
+    postgres_uri.path = "/postgres"
+    
+    # Terminate all connections to the database
+    sql = <<~SQL.strip
+      SELECT pg_terminate_backend(pg_stat_activity.pid)
+      FROM pg_stat_activity
+      WHERE pg_stat_activity.datname = '#{db_name}'
+        AND pid <> pg_backend_pid();
+    SQL
+    execute_sql_on_postgres(postgres_uri, sql)
+    
+    # Drop database
+    sql = "DROP DATABASE IF EXISTS #{db_name};"
+    execute_sql_on_postgres(postgres_uri, sql)
+    
+    # Create database
+    sql = "CREATE DATABASE #{db_name};"
+    execute_sql_on_postgres(postgres_uri, sql)
+  end
+
+  def execute_sql_on_postgres(uri, sql)
+    db_name = uri.path[1..]  # Remove leading slash
+    
+    # Build command parts (use stdin for SQL to avoid escaping issues)
+    cmd_parts = []
+    cmd_parts << "psql"
+    cmd_parts << "--host=#{uri.host}" if uri.host
+    cmd_parts << "--port=#{uri.port}" if uri.port
+    cmd_parts << "--username=#{uri.user}" if uri.user
+    cmd_parts << "--no-password"
+    cmd_parts << "--quiet"
+    cmd_parts << db_name
+
+    # Set password via environment variable and pipe SQL via stdin
+    full_cmd = if uri.password
+      "echo #{shell_escape(sql)} | PGPASSWORD=#{shell_escape(uri.password)} #{cmd_parts.join(' ')}"
+    else
+      "echo #{shell_escape(sql)} | #{cmd_parts.join(' ')}"
+    end
+
+    system("#{full_cmd} 2>&1 | grep -v 'WARNING' > /dev/null")
+  end
+
+  def build_psql_copy_export(uri, table, columns)
+    db_name = uri.path[1..]
+    
+    # Build psql command parts
+    psql_cmd = []
+    psql_cmd << "psql"
+    psql_cmd << "--host=#{uri.host}" if uri.host
+    psql_cmd << "--port=#{uri.port}" if uri.port
+    psql_cmd << "--username=#{uri.user}" if uri.user
+    psql_cmd << "--no-password"
+    psql_cmd << db_name
+    
+    # For TimescaleDB hypertables, must use SELECT wrapped in parentheses
+    # Use echo to pipe SQL to avoid escaping issues
+    sql = "COPY (SELECT * FROM #{table}) TO STDOUT"
+    
+    if uri.password
+      "echo #{shell_escape(sql)} | PGPASSWORD=#{shell_escape(uri.password)} #{psql_cmd.join(' ')}"
+    else
+      "echo #{shell_escape(sql)} | #{psql_cmd.join(' ')}"
+    end
+  end
+
+  def build_psql_copy_import(uri, table, columns)
+    db_name = uri.path[1..]
+    
+    # Build psql command parts  
+    psql_cmd = []
+    psql_cmd << "psql"
+    psql_cmd << "--host=#{uri.host}" if uri.host
+    psql_cmd << "--port=#{uri.port}" if uri.port
+    psql_cmd << "--username=#{uri.user}" if uri.user
+    psql_cmd << "--no-password"
+    psql_cmd << db_name
+    
+    # Use echo to pipe SQL to avoid escaping issues
+    sql = "COPY #{table} FROM STDIN"
+    
+    if uri.password
+      "echo #{shell_escape(sql)} | PGPASSWORD=#{shell_escape(uri.password)} #{psql_cmd.join(' ')}"
+    else
+      "echo #{shell_escape(sql)} | #{psql_cmd.join(' ')}"
+    end
+  end
+
+  def build_pg_dump_command(uri, data_only: false, table: nil, exclude_hypertables: false)
+    cmd = ["pg_dump"]
+    cmd << "--host=#{uri.host}" if uri.host
+    cmd << "--port=#{uri.port}" if uri.port
+    cmd << "--username=#{uri.user}" if uri.user
+    cmd << "--no-password"
+    cmd << "--no-owner"
+    cmd << "--no-acl"
+    
+    # Add data-only flag if requested
+    cmd << "--data-only" if data_only
+    
+    # Add table filter if specified
+    cmd << "--table=#{table}" if table
+    
+    # Exclude hypertable data if requested (we copy it separately)
+    if exclude_hypertables
+      cmd << "--exclude-table-data=server_stats"
+      cmd << "--exclude-table-data=resource_stats"
+    end
+    
+    cmd << uri.path[1..]  # Remove leading slash from path
+
+    # Set password via environment variable
+    cmd = "PGPASSWORD=#{shell_escape(uri.password)} #{cmd.join(' ')}" if uri.password
+
+    cmd
+  end
+
+  def build_psql_command(uri)
+    cmd = ["psql"]
+    cmd << "--host=#{uri.host}" if uri.host
+    cmd << "--port=#{uri.port}" if uri.port
+    cmd << "--username=#{uri.user}" if uri.user
+    cmd << "--no-password"
+    cmd << "--quiet"
+    cmd << uri.path[1..]  # Remove leading slash from path
+
+    # Set password via environment variable
+    cmd = "PGPASSWORD=#{shell_escape(uri.password)} #{cmd.join(' ')}" if uri.password
+
+    cmd
+  end
+
+  def execute_sql(uri, sql)
+    cmd = ["psql"]
+    cmd << "--host=#{uri.host}" if uri.host
+    cmd << "--port=#{uri.port}" if uri.port
+    cmd << "--username=#{uri.user}" if uri.user
+    cmd << "--no-password"
+    cmd << "--quiet"
+    cmd << "--command=#{shell_escape(sql)}"
+    cmd << uri.path[1..]  # Remove leading slash from path
+
+    # Set password via environment variable
+    full_cmd = if uri.password
+      "PGPASSWORD=#{shell_escape(uri.password)} #{cmd.join(' ')}"
+    else
+      cmd.join(' ')
+    end
+
+    success = system(full_cmd)
+    unless success
+      error "SQL execution failed: #{sql[0..50]}..."
+      exit 1
+    end
+  end
+
+  def mask_password(url)
+    uri = URI.parse(url)
+    if uri.password
+      masked_uri = uri.dup
+      masked_uri.password = "****"
+      masked_uri.to_s
+    else
+      url
+    end
+  rescue
+    url
+  end
+
+  def shell_escape(str)
+    "'#{str.to_s.gsub("'", "'\\''")}'"
+  end
+
+  def command_exists?(cmd)
+    system("which #{cmd} > /dev/null 2>&1")
+  end
+
+  def step(message)
+    puts "\n→ #{message}"
+  end
+
+  def info(message)
+    puts "  #{message}"
+  end
+
+  def success_msg(message)
+    puts "  ✓ #{message}"
+  end
+
+  def warn(message)
+    puts "  ⚠ #{message}"
+  end
+
+  def error(message)
+    puts "  ✗ ERROR: #{message}"
+  end
+end
+
+# Run the script
+if __FILE__ == $0
+  DatabaseMirror.new.run
+end
+
