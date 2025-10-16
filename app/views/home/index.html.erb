@@ -299,7 +299,7 @@
     <!-- CPU View: Resources sorted by CPU usage -->
     <div class="cpu-view">
       <div class="cpu-header">
-        <h2>Resources by CPU Usage</h2>
+        <h2>Resources by CPU Usage (24h Average)</h2>
         <% if @server_id.present? && (filtered_server = @servers.find { |s| s.id.to_s == @server_id.to_s }) %>
           <span class="filter-badge">Filtered: <%= filtered_server.name %></span>
         <% end %>
@@ -315,7 +315,8 @@
                 <th>Server</th>
                 <th>Project / Environment</th>
                 <th>Status</th>
-                <th>CPU Usage</th>
+                <th>24h Avg CPU</th>
+                <th>Current CPU</th>
                 <th>Memory</th>
                 <th>Disk</th>
               </tr>
@@ -358,10 +359,17 @@
                     <% end %>
                   </td>
                   <td class="cpu-usage-highlight">
-                    <% if rstat&.cpu_pct %>
-                      <strong><%= rstat.cpu_pct.round(1) %>%</strong>
+                    <% if resource.avg_cpu_24h %>
+                      <strong><%= resource.avg_cpu_24h.round(1) %>%</strong>
                     <% else %>
                       <span class="no-data">No data</span>
+                    <% end %>
+                  </td>
+                  <td class="cpu-stat">
+                    <% if rstat&.cpu_pct %>
+                      <%= rstat.cpu_pct.round(1) %>%
+                    <% else %>
+                      <span class="no-data">-</span>
                     <% end %>
                   </td>
                   <td class="memory-stat">
@@ -397,7 +405,7 @@
     <!-- RAM View: Resources sorted by memory usage -->
     <div class="ram-view">
       <div class="ram-header">
-        <h2>Resources by RAM Usage</h2>
+        <h2>Resources by RAM Usage (24h Average)</h2>
         <% if @server_id.present? && (filtered_server = @servers.find { |s| s.id.to_s == @server_id.to_s }) %>
           <span class="filter-badge">Filtered: <%= filtered_server.name %></span>
         <% end %>
@@ -413,7 +421,8 @@
                 <th>Server</th>
                 <th>Project / Environment</th>
                 <th>Status</th>
-                <th>Memory Usage</th>
+                <th>24h Avg RAM</th>
+                <th>Current RAM</th>
                 <th>Memory %</th>
                 <th>CPU</th>
                 <th>Disk</th>
@@ -457,10 +466,17 @@
                     <% end %>
                   </td>
                   <td class="memory-usage-highlight">
-                    <% if rstat&.mem_used_bytes %>
-                      <strong><%= format_bytes(rstat.mem_used_bytes) %></strong>
+                    <% if resource.avg_mem_24h %>
+                      <strong><%= format_bytes(resource.avg_mem_24h) %></strong>
                     <% else %>
                       <span class="no-data">No data</span>
+                    <% end %>
+                  </td>
+                  <td class="memory-stat">
+                    <% if rstat&.mem_used_bytes %>
+                      <%= format_bytes(rstat.mem_used_bytes) %>
+                    <% else %>
+                      <span class="no-data">-</span>
                     <% end %>
                   </td>
                   <td class="memory-pct">
