@@ -59,7 +59,8 @@ class ServersController < ApplicationController
       iops_write: stats.map { |s| s.iops_w&.round(2) },
       load1: stats.map { |s| s.load1&.round(2) },
       load5: stats.map { |s| s.load5&.round(2) },
-      load15: stats.map { |s| s.load15&.round(2) }
+      load15: stats.map { |s| s.load15&.round(2) },
+      zombie_processes: stats.map { |s| s.zombie_processes }
     }
   end
   
@@ -75,6 +76,7 @@ class ServersController < ApplicationController
     load1_values = stats.map(&:load1).compact
     load5_values = stats.map(&:load5).compact
     load15_values = stats.map(&:load15).compact
+    zombie_values = stats.map(&:zombie_processes).compact
     
     {
       cpu_avg: cpu_values.any? ? (cpu_values.sum / cpu_values.size).round(2) : nil,
@@ -94,6 +96,9 @@ class ServersController < ApplicationController
       load1_max: load1_values.max,
       load5_avg: load5_values.any? ? (load5_values.sum / load5_values.size).round(2) : nil,
       load15_avg: load15_values.any? ? (load15_values.sum / load15_values.size).round(2) : nil,
+      zombie_avg: zombie_values.any? ? (zombie_values.sum.to_f / zombie_values.size).round(1) : nil,
+      zombie_max: zombie_values.max,
+      zombie_current: zombie_values.last,
       data_points: stats.size
     }
   end

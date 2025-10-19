@@ -124,6 +124,22 @@
           Over <%= @time_range %>
         </div>
       </div>
+
+      <% if @stats_summary[:zombie_current] && @stats_summary[:zombie_current] > 0 %>
+      <div class="stat-summary-card zombie-card" style="border-left: 3px solid #f59e0b;">
+        <div class="stat-card-header">
+          <span class="stat-icon">🧟</span>
+          <div class="stat-summary-label">Zombie Processes</div>
+        </div>
+        <div class="stat-summary-value" style="color: #f59e0b;"><%= @latest_stat&.zombie_processes || 0 %></div>
+        <div class="stat-summary-meta">
+          <% if @stats_summary[:zombie_avg] %>
+            Avg: <%= @stats_summary[:zombie_avg] %> | 
+            Max: <%= @stats_summary[:zombie_max] %>
+          <% end %>
+        </div>
+      </div>
+      <% end %>
     </div>
 
     <!-- Charts Grid -->
@@ -145,6 +161,14 @@
         <h3>Disk Usage Over Time</h3>
         <canvas id="diskChart"></canvas>
       </div>
+
+      <!-- Zombie Processes Chart -->
+      <% if @stats_summary[:zombie_max] && @stats_summary[:zombie_max] > 0 %>
+      <div class="chart-container">
+        <h3>Zombie Processes Over Time</h3>
+        <canvas id="zombieChart"></canvas>
+      </div>
+      <% end %>
 
       <!-- Combined Overview Chart -->
       <div class="chart-container">
@@ -610,6 +634,57 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
   });
+  
+  // Zombie Processes Chart
+  <% if @stats_summary[:zombie_max] && @stats_summary[:zombie_max] > 0 %>
+  new Chart(document.getElementById('zombieChart'), {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [
+        {
+          label: 'Zombie Processes',
+          data: chartData.timestamps.map((t, i) => ({ x: t, y: chartData.zombie_processes[i] })),
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245, 158, 11, 0.2)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          stepped: true
+        }
+      ]
+    },
+    options: {
+      ...commonOptions,
+      scales: {
+        ...commonOptions.scales,
+        y: {
+          ...commonOptions.scales.y,
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+            callback: function(value) {
+              return Number.isInteger(value) ? value : null;
+            }
+          }
+        }
+      },
+      plugins: {
+        ...commonOptions.plugins,
+        tooltip: {
+          ...commonOptions.plugins.tooltip,
+          callbacks: {
+            ...commonOptions.plugins.tooltip.callbacks,
+            label: function(context) {
+              return 'Zombie Processes: ' + (context.parsed.y || 0);
+            }
+          }
+        }
+      }
+    }
+  });
+  <% end %>
   
   // Combined Overview Chart
   new Chart(document.getElementById('overviewChart'), {

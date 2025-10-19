@@ -37,6 +37,9 @@ class ServerMetricsCollectorJob < ApplicationJob
     
     Rails.logger.info "[ServerMetrics] #{server.name}: → Collecting filesystem info..."
     filesystems = collect_filesystems(client)
+    
+    Rails.logger.info "[ServerMetrics] #{server.name}: → Counting zombie processes..."
+    zombie_count = collect_zombie_processes(client)
 
     ServerStat.create!(
       server: server,
@@ -51,7 +54,8 @@ class ServerMetricsCollectorJob < ApplicationJob
       load1: load1,
       load5: load5,
       load15: load15,
-      filesystems: filesystems
+      filesystems: filesystems,
+      zombie_processes: zombie_count
     )
     
     elapsed = (Time.current - start_time).round(1)
@@ -236,6 +240,18 @@ class ServerMetricsCollectorJob < ApplicationJob
   def collect_cpu_cores(client)
     code, out, _ = client.exec!("nproc 2>/dev/null || grep -c processor /proc/cpuinfo")
     out.to_i if code == 0 && out.to_i > 0
+  end
+
+  def collect_zombie_processes(client)
+    # Count processes in zombie state (Z)
+    code, out, _err = client.exec!("ps axo state | grep -c '^Z' 2>/dev/null || echo 0")
+    return out.to_i if code == 0 && out.to_s.strip.match?(/^\d+$/)
+    
+    # Fallback: count from /proc
+    code, out, _ = client.exec!("find /proc -maxdepth 1 -type d -name '[0-9]*' -exec cat {}/stat 2>/dev/null \\; | awk '{if ($3 == \"Z\") count++} END {print count+0}'")
+    code == 0 ? out.to_i : nil
+  rescue
+    nil
   end
 end
 

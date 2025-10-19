@@ -39,6 +39,8 @@ class HomeController < ApplicationController
       prepare_cpu_view
     when 'ram'
       prepare_ram_view
+    when 'zombies'
+      prepare_zombies_view
     end
     
     # Get all servers for filter dropdown
@@ -101,6 +103,37 @@ class HomeController < ApplicationController
                AVG(CASE WHEN resource_stats.captured_at >= NOW() - INTERVAL \'24 hours\' THEN resource_stats.mem_used_bytes END) as avg_mem_24h')
       .group('resources.id')
       .order('avg_mem_24h DESC NULLS LAST')
+      .limit(100)
+  end
+  
+  def prepare_zombies_view
+    # Get servers with zombie processes
+    server_query = Server.includes(:coolify_team)
+    server_query = server_query.where(id: @server_id) if @server_id.present?
+    
+    # Get latest server stats with zombie processes
+    @servers_by_zombies = server_query
+      .left_joins(:server_stats)
+      .select("servers.*, 
+               MAX(CASE WHEN server_stats.captured_at >= NOW() - INTERVAL '24 hours' THEN server_stats.zombie_processes END) as max_zombies_24h,
+               AVG(CASE WHEN server_stats.captured_at >= NOW() - INTERVAL '24 hours' THEN server_stats.zombie_processes END) as avg_zombies_24h")
+      .group('servers.id')
+      .having("MAX(CASE WHEN server_stats.captured_at >= NOW() - INTERVAL '24 hours' THEN server_stats.zombie_processes END) > 0")
+      .order(Arel.sql('max_zombies_24h DESC NULLS LAST'))
+    
+    # Get resources with zombie processes
+    resource_query = Resource.includes(:server, environment: :project)
+    resource_query = resource_query.where(server_id: @server_id) if @server_id.present?
+    
+    # Get resources with highest zombie counts
+    @resources_by_zombies = resource_query
+      .left_joins(:resource_stats)
+      .select("resources.*, 
+               MAX(CASE WHEN resource_stats.captured_at >= NOW() - INTERVAL '24 hours' THEN resource_stats.zombie_processes END) as max_zombies_24h,
+               AVG(CASE WHEN resource_stats.captured_at >= NOW() - INTERVAL '24 hours' THEN resource_stats.zombie_processes END) as avg_zombies_24h")
+      .group('resources.id')
+      .having("MAX(CASE WHEN resource_stats.captured_at >= NOW() - INTERVAL '24 hours' THEN resource_stats.zombie_processes END) > 0")
+      .order(Arel.sql('max_zombies_24h DESC NULLS LAST'))
       .limit(100)
   end
 end

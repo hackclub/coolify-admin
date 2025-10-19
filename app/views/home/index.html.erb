@@ -20,6 +20,8 @@
         class: "view-btn #{@view == 'cpu' ? 'active' : ''}" %>
     <%= link_to "🧠 RAM View", root_path(view: 'ram', server_id: @server_id), 
         class: "view-btn #{@view == 'ram' ? 'active' : ''}" %>
+    <%= link_to "🧟 Zombies View", root_path(view: 'zombies', server_id: @server_id), 
+        class: "view-btn #{@view == 'zombies' ? 'active' : ''}" %>
   </div>
   
   <div class="filter-controls">
@@ -509,6 +511,170 @@
             <p>No resources found.</p>
             <% if @server_id.present? %>
               <p><%= link_to "Clear filter", root_path(view: 'ram') %> to see all resources.</p>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  
+  <% elsif @view == 'zombies' %>
+    <!-- Zombies View: Servers and Resources with zombie processes -->
+    <div class="zombies-view">
+      <div class="zombies-header">
+        <h2>🧟 Zombie Processes (24h)</h2>
+        <% if @server_id.present? && (filtered_server = @servers.find { |s| s.id.to_s == @server_id.to_s }) %>
+          <span class="filter-badge">Filtered: <%= filtered_server.name %></span>
+        <% end %>
+      </div>
+      
+      <!-- Servers with zombies -->
+      <div class="zombies-servers-section">
+        <h3>Servers with Zombie Processes</h3>
+        <% if @servers_by_zombies.any? %>
+          <table class="zombies-table">
+            <thead>
+              <tr>
+                <th>Server</th>
+                <th>Team</th>
+                <th>Status</th>
+                <th>Max Zombies (24h)</th>
+                <th>Avg Zombies (24h)</th>
+                <th>Resources</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @servers_by_zombies.each do |server| %>
+                <% sstat = @latest_server_stats[server.id] %>
+                <tr class="zombies-row <%= server.max_zombies_24h && server.max_zombies_24h > 100 ? 'zombie-critical' : 'zombie-warning' %>">
+                  <td class="server-name">
+                    <%= link_to server.name, server_path(server), class: "server-detail-link" %>
+                    <div class="server-url-small"><%= server.ip %></div>
+                  </td>
+                  <td><%= server.coolify_team.name %></td>
+                  <td>
+                    <% if server.is_reachable %>
+                      <span class="badge badge-success">up</span>
+                    <% else %>
+                      <span class="badge badge-error">down</span>
+                    <% end %>
+                  </td>
+                  <td class="zombie-count-highlight">
+                    <strong style="color: #f59e0b; font-size: 1.2em;">
+                      <%= number_with_delimiter(server.max_zombies_24h&.to_i || 0) %> 🧟
+                    </strong>
+                  </td>
+                  <td class="zombie-avg">
+                    <%= (server.avg_zombies_24h || 0).round(1) %>
+                  </td>
+                  <td><%= server.resources.count %></td>
+                  <td>
+                    <%= link_to "View Details →", server_path(server), class: "btn btn-small" %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        <% else %>
+          <div class="empty-state">
+            <p>✅ No servers with zombie processes detected in the last 24 hours!</p>
+            <% if @server_id.present? %>
+              <p><%= link_to "Clear filter", root_path(view: 'zombies') %> to see all servers.</p>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+      
+      <!-- Resources with zombies -->
+      <div class="zombies-resources-section" style="margin-top: 2rem;">
+        <h3>Resources with Zombie Processes</h3>
+        <% if @resources_by_zombies.any? %>
+          <table class="zombies-table">
+            <thead>
+              <tr>
+                <th>Resource</th>
+                <th>Type</th>
+                <th>Server</th>
+                <th>Project / Environment</th>
+                <th>Status</th>
+                <th>Max Zombies (24h)</th>
+                <th>Avg Zombies (24h)</th>
+                <th>CPU</th>
+                <th>Memory</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @resources_by_zombies.each do |resource| %>
+                <% rstat = @latest_resource_stats[resource.id] %>
+                <tr class="zombies-row <%= resource.max_zombies_24h && resource.max_zombies_24h > 100 ? 'zombie-critical' : 'zombie-warning' %>">
+                  <td class="resource-name">
+                    <div class="resource-name-row">
+                      <strong><%= link_to resource.name, resource_path(resource), class: "resource-detail-link" %></strong>
+                      <% if resource.coolify_url %>
+                        <a href="<%= resource.coolify_url %>" target="_blank" rel="noopener" class="coolify-chevron" title="Open in Coolify">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9.2-9.2M17 17V7H7"></path></svg>
+                        </a>
+                      <% end %>
+                    </div>
+                    <% if resource.metadata.dig('raw', 'fqdn').present? %>
+                      <div class="resource-url">
+                        <a href="<%= resource.metadata.dig('raw', 'fqdn').split(',').first %>" target="_blank" rel="noopener">
+                          <%= resource.metadata.dig('raw', 'fqdn').split(',').first %>
+                        </a>
+                      </div>
+                    <% end %>
+                  </td>
+                  <td>
+                    <span class="resource-type-badge <%= resource.type.downcase %>">
+                      <%= resource.type.sub('Coolify', '').downcase %>
+                    </span>
+                  </td>
+                  <td class="server-name"><%= resource.server.name %></td>
+                  <td class="project-env">
+                    <%= resource.environment.project.name %>
+                    <span class="env-name">/ <%= resource.environment.name %></span>
+                  </td>
+                  <td>
+                    <% if resource.status.present? %>
+                      <% status_class = resource.status.start_with?('running') ? 'ok' : 'err' %>
+                      <span class="status <%= status_class %>"><%= resource.status %></span>
+                    <% end %>
+                  </td>
+                  <td class="zombie-count-highlight">
+                    <strong style="color: #f59e0b; font-size: 1.2em;">
+                      <%= number_with_delimiter(resource.max_zombies_24h&.to_i || 0) %> 🧟
+                    </strong>
+                  </td>
+                  <td class="zombie-avg">
+                    <%= (resource.avg_zombies_24h || 0).round(1) %>
+                  </td>
+                  <td class="cpu-stat">
+                    <% if rstat&.cpu_pct %>
+                      <%= rstat.cpu_pct.round(1) %>%
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                  <td class="memory-stat">
+                    <% if rstat %>
+                      <%= format_memory_stat(rstat) %>
+                    <% else %>
+                      <span class="no-data">-</span>
+                    <% end %>
+                  </td>
+                  <td>
+                    <%= link_to "View Details →", resource_path(resource), class: "btn btn-small" %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        <% else %>
+          <div class="empty-state">
+            <p>✅ No resources with zombie processes detected in the last 24 hours!</p>
+            <% if @server_id.present? %>
+              <p><%= link_to "Clear filter", root_path(view: 'zombies') %> to see all resources.</p>
             <% end %>
           </div>
         <% end %>

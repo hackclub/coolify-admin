@@ -38,7 +38,8 @@ class ResourcesController < ApplicationController
       memory_bytes: stats.map { |s| s.mem_used_bytes },
       disk_persistent: stats.map { |s| s.disk_persistent_bytes },
       disk_runtime: stats.map { |s| s.disk_runtime_bytes },
-      disk_total: stats.map { |s| (s.disk_persistent_bytes.to_i + s.disk_runtime_bytes.to_i) }
+      disk_total: stats.map { |s| (s.disk_persistent_bytes.to_i + s.disk_runtime_bytes.to_i) },
+      zombie_processes: stats.map { |s| s.zombie_processes }
     }
   end
   
@@ -48,6 +49,7 @@ class ResourcesController < ApplicationController
     cpu_values = stats.map(&:cpu_pct).compact
     mem_values = stats.map(&:mem_used_bytes).compact
     disk_values = stats.map { |s| (s.disk_persistent_bytes.to_i + s.disk_runtime_bytes.to_i) }
+    zombie_values = stats.map(&:zombie_processes).compact
     
     {
       cpu_avg: cpu_values.any? ? (cpu_values.sum / cpu_values.size).round(2) : nil,
@@ -59,6 +61,9 @@ class ResourcesController < ApplicationController
       disk_avg: disk_values.any? ? (disk_values.sum / disk_values.size).round(0) : nil,
       disk_max: disk_values.max,
       disk_min: disk_values.min,
+      zombie_avg: zombie_values.any? ? (zombie_values.sum.to_f / zombie_values.size).round(1) : nil,
+      zombie_max: zombie_values.max,
+      zombie_current: zombie_values.last,
       data_points: stats.size
     }
   end

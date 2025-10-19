@@ -137,7 +137,19 @@ class ResourceMetricsCollectorJob < ApplicationJob
     
     Rails.logger.info "[ResourceMetrics] #{server.name}:   Found #{volume_paths.count} unique volume paths"
     
-    # 4. Bulk calculate all volume sizes (simple du approach)
+    # 4. Collect zombie processes for all containers (single SSH call)
+    Rails.logger.info "[ResourceMetrics] #{server.name}: → Counting zombie processes per container..."
+    zombie_start = Time.current
+    zombies_by_container = collect_container_zombies(client, id_to_resource.keys)
+    zombie_elapsed = (Time.current - zombie_start).round(2)
+    total_zombies = zombies_by_container.values.sum
+    if total_zombies > 0
+      Rails.logger.info "[ResourceMetrics] #{server.name}:   Found #{total_zombies} zombie processes across #{zombies_by_container.count { |_, v| v > 0 }} containers in #{zombie_elapsed}s"
+    else
+      Rails.logger.info "[ResourceMetrics] #{server.name}:   No zombie processes found (#{zombie_elapsed}s)"
+    end
+    
+    # 5. Bulk calculate all volume sizes (simple du approach)
     volume_sizes = {}
     if volume_paths.any?
       Rails.logger.info "[ResourceMetrics] #{server.name}: → Calculating volume sizes (#{volume_paths.count} paths)..."
@@ -212,6 +224,9 @@ class ResourceMetricsCollectorJob < ApplicationJob
       # Use container limit if set, otherwise use system memory from stats
       final_mem_limit = container_mem_limit > 0 ? container_mem_limit : mem_limit
       
+      # Get zombie process count for this container
+      zombie_count = zombies_by_container[cid].to_i
+      
       # Log detailed info for first few containers
       if collected < 3
         limit_source = container_mem_limit > 0 ? "container limit" : "system memory"
@@ -224,6 +239,7 @@ class ResourceMetricsCollectorJob < ApplicationJob
         Rails.logger.info "[ResourceMetrics] #{server.name}:   #{resource.name}:"
         Rails.logger.info "[ResourceMetrics] #{server.name}:     MEM: #{used_mb}MB / #{limit_gb}GB (#{limit_source})"
         Rails.logger.info "[ResourceMetrics] #{server.name}:     DISK: RW=#{rw_mb}MB, Volumes=#{vol_mb}MB (#{mounts.count} mounts)"
+        Rails.logger.info "[ResourceMetrics] #{server.name}:     ZOMBIES: #{zombie_count}" if zombie_count > 0
       end
       
       ResourceStat.create!(
@@ -235,7 +251,8 @@ class ResourceMetricsCollectorJob < ApplicationJob
         mem_used_bytes: mem_used,
         mem_limit_bytes: final_mem_limit,
         disk_runtime_bytes: size_rw,
-        disk_persistent_bytes: container_volume_size
+        disk_persistent_bytes: container_volume_size,
+        zombie_processes: zombie_count
       )
       collected += 1
       
@@ -303,6 +320,95 @@ class ResourceMetricsCollectorJob < ApplicationJob
     when 'PB', 'PIB' then value * 1024 * 1024 * 1024 * 1024 * 1024
     else value
     end.to_i
+  end
+
+  # Collect zombie process counts per container using efficient single SSH call
+  def collect_container_zombies(client, container_ids)
+    return {} if container_ids.empty?
+    
+    # Single compound command to get all data we need
+    compound_cmd = <<~SHELL.strip
+      echo "=ZOMBIES=";
+      ps -eo ppid,state 2>/dev/null | awk '$2=="Z" {print $1}' | sort | uniq -c || echo "";
+      echo "=CONTAINERS=";
+      docker inspect --format '{{.State.Pid}} {{.Id}}' #{container_ids.join(' ')} 2>/dev/null || echo "";
+      echo "=TREE=";
+      ps -eo pid,ppid 2>/dev/null || echo ""
+    SHELL
+    
+    _code, output, _err = client.exec!(compound_cmd, timeout: 30)
+    
+    # Parse output sections
+    sections = output.split(/^=/m)
+    zombies_section = sections.find { |s| s.start_with?('ZOMBIES=') }&.sub('ZOMBIES=', '')&.strip || ''
+    containers_section = sections.find { |s| s.start_with?('CONTAINERS=') }&.sub('CONTAINERS=', '')&.strip || ''
+    tree_section = sections.find { |s| s.start_with?('TREE=') }&.sub('TREE=', '')&.strip || ''
+    
+    # Parse zombie parent PIDs with counts: "  5 1234" -> {1234 => 5}
+    zombie_parents = {}
+    zombies_section.each_line do |line|
+      parts = line.strip.split
+      next unless parts.length == 2
+      count = parts[0].to_i
+      ppid = parts[1].to_i
+      zombie_parents[ppid] = count if ppid > 0
+    end
+    
+    # Parse container PIDs: "12345 abc123def456..." -> {12345 => "abc123..."}
+    container_pids = {}
+    pid_to_container = {}
+    containers_section.each_line do |line|
+      parts = line.strip.split
+      next unless parts.length == 2
+      pid = parts[0].to_i
+      container_id = parts[1]
+      if pid > 0 && container_id.present?
+        container_pids[pid] = container_id
+        pid_to_container[pid] = container_id
+      end
+    end
+    
+    # Build process tree: {child_pid => parent_pid}
+    process_tree = {}
+    tree_section.each_line do |line|
+      parts = line.strip.split
+      next unless parts.length == 2
+      pid = parts[0].to_i
+      ppid = parts[1].to_i
+      process_tree[pid] = ppid if pid > 0
+    end
+    
+    # Map zombie parents to containers by walking up the tree
+    zombies_by_container = Hash.new(0)
+    
+    zombie_parents.each do |ppid, count|
+      # Walk up the process tree to find a container PID
+      current_pid = ppid
+      visited = {}
+      max_depth = 50
+      depth = 0
+      
+      while current_pid && current_pid > 1 && depth < max_depth
+        # Prevent infinite loops
+        break if visited[current_pid]
+        visited[current_pid] = true
+        
+        # Check if this PID is a container's main process
+        if (container_id = pid_to_container[current_pid])
+          zombies_by_container[container_id] += count
+          break
+        end
+        
+        # Move to parent
+        current_pid = process_tree[current_pid]
+        depth += 1
+      end
+    end
+    
+    zombies_by_container
+  rescue => e
+    Rails.logger.warn "[ResourceMetrics] Failed to collect zombie processes: #{e.message}"
+    {}
   end
 end
 
