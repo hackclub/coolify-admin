@@ -352,6 +352,66 @@
     </div>
   <% end %>
 
+  <!-- Resources on this Server -->
+  <% if @projects_tree.any? %>
+    <div class="resource-details-section">
+      <h2>Resources on this Server (<%= @resources_count %>)</h2>
+      
+      <div class="tree-section">
+        <% @projects_tree.each do |project, environments_hash| %>
+          <div class="tree-item project-item" style="margin-bottom: 1rem;">
+            <div class="item-name project-name" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem;">
+              <%= project.name %>
+            </div>
+            
+            <% environments_hash.each do |environment, resources| %>
+              <div class="environment-item" style="margin-left: 1rem; margin-bottom: 0.5rem;">
+                <div class="item-name environment-name" style="font-weight: 500; margin-bottom: 0.25rem; font-size: 0.9rem;">
+                  <%= environment.name %> <span class="count" style="color: #666;">(<%= resources.count %>)</span>
+                </div>
+                
+                <ul class="tree-list resource-list" style="list-style: none; padding: 0; margin-left: 1rem;">
+                  <% resources.each do |resource| %>
+                    <li class="tree-item resource-item" style="margin-bottom: 0.25rem; padding: 0.25rem 0.5rem; background: #f9fafb; border-radius: 3px;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="resource-type-badge <%= resource.type.downcase %>" style="padding: 0.1rem 0.4rem; border-radius: 2px; font-size: 0.7rem; font-weight: 500;">
+                          <%= resource.type.sub('Coolify', '').downcase %>
+                        </span>
+                        <div class="item-name resource-name" style="font-weight: 500; font-size: 0.9rem;">
+                          <%= link_to resource.name, resource_path(resource), class: "resource-detail-link" %>
+                          <% if resource.status %>
+                            <span class="status <%= resource.status.include?('running') ? 'ok' : 'err' %>" style="margin-left: 0.5rem; font-size: 0.75rem;">
+                              <%= resource.status %>
+                            </span>
+                          <% end %>
+                        </div>
+                      </div>
+                      <% if resource.fqdn.present? %>
+                        <div style="font-size: 0.75rem; color: #666; margin-left: 0.25rem; margin-top: 0.1rem;">
+                          <%= resource.fqdn %>
+                        </div>
+                      <% end %>
+                      <% if (rstat = @latest_resource_stats[resource.id]) %>
+                        <div class="resource-stats" style="font-size: 0.75rem; color: #666; margin-top: 0.1rem;">
+                          CPU: <%= rstat.cpu_pct&.round(1) %>% • MEM: <%= format_memory_stat(rstat) %> • DISK: <%= format_bytes([rstat.disk_persistent_bytes, rstat.disk_runtime_bytes].compact.sum) %>
+                        </div>
+                      <% end %>
+                    </li>
+                  <% end %>
+                </ul>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% else %>
+    <div class="resource-details-section">
+      <h2>Resources on this Server</h2>
+      <p class="text-muted" style="padding: 1rem 0;">No resources found on this server.</p>
+    </div>
+  <% end %>
+
   <!-- Server Details Section -->
   <div class="resource-details-section">
     <h2>Server Details</h2>

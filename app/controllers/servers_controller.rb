@@ -29,6 +29,20 @@ class ServersController < ApplicationController
     
     # Get resources count
     @resources_count = @server.resources.count
+    
+    # Get resources grouped by project and environment for tree view
+    @resources = @server.resources.includes(:environment => :project).order('projects.name, environments.name, resources.name')
+    
+    # Get latest resource stats
+    resource_ids = @resources.pluck(:id)
+    latest_stats = ResourceStat.where(resource_id: resource_ids)
+                               .select('DISTINCT ON (resource_id) *')
+                               .order('resource_id, captured_at DESC')
+    @latest_resource_stats = latest_stats.index_by(&:resource_id)
+    
+    # Group resources by project and environment
+    @projects_tree = @resources.group_by { |r| r.environment.project }
+                               .transform_values { |resources| resources.group_by(&:environment) }
   end
   
   private
