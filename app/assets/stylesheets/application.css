@@ -1609,7 +1609,7 @@ body {
   background: linear-gradient(90deg, #ede9fe 0%, #a78bfa 50%, #8b5cf6 100%);
 }
 
-.stat-value {
+.stat-bar-container .stat-value {
   position: absolute;
   top: 50%;
   right: 0.5rem;
