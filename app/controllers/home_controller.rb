@@ -31,6 +31,15 @@ class HomeController < ApplicationController
       .where(id: ResourceStat.select('DISTINCT ON (resource_id) id').order('resource_id, captured_at DESC'))
       .index_by(&:resource_id)
     
+    # Fetch last 24h history for sparklines, selecting minimal fields
+    # Group by server_id for O(1) access in view
+    history_query = ServerStat
+      .where('captured_at >= ?', 24.hours.ago)
+      .order(captured_at: :asc)
+      .select(:server_id, :captured_at, :cpu_pct, :mem_pct)
+    
+    @server_histories = history_query.group_by(&:server_id)
+    
     # Prepare data based on view
     case @view
     when 'storage'

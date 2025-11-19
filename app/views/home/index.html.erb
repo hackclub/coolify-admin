@@ -71,128 +71,153 @@
   </div>
 
   <% if @view == 'tree' %>
-    <!-- Tree View: Teams List -->
-    <div class="teams-list">
-    <% @coolify_teams.each do |coolify_team| %>
-      <div class="team-card">
-        <div class="team-header">
-          <div class="team-header-left">
-            <h2><%= coolify_team.name %></h2>
-            <div class="team-meta">
-              <span class="team-url"><%= coolify_team.base_url %></span>
-              <span class="team-token">Token: <%= coolify_team.masked_token %></span>
-            </div>
-          </div>
-          <div class="team-actions">
-            <%= button_to "Delete", coolify_team_path(coolify_team), 
-                method: :delete, 
-                class: "btn btn-danger",
-                form: { data: { turbo_confirm: "Are you sure you want to delete '#{coolify_team.name}'? This cannot be undone." } } %>
-          </div>
-        </div>
-
-        <div class="tree-section">
-          <!-- Servers Section -->
-          <h3>Servers (<%= coolify_team.servers.count %>)</h3>
-          <% if coolify_team.servers.empty? %>
-            <p class="no-data">No servers synced yet. Click "Sync Coolify Data" above.</p>
-          <% else %>
-            <ul class="tree-list server-list">
-              <% coolify_team.servers.each do |server| %>
-                <li class="tree-item server-item">
-                  <div class="item-name server-name">
-                    <%= link_to server.name, server_path(server), class: "server-detail-link" %>
-                    <% if server.is_reachable %>
-                      <span class="badge badge-success">up</span>
-                    <% else %>
-                      <span class="badge badge-error">down</span>
-                    <% end %>
-                    <% if server.private_key&.private_key.present? %>
-                      <button class="btn btn-small" data-action="collect-server-stats" data-server-id="<%= server.id %>" data-server-name="<%= server.name %>">📊 Collect Stats</button>
-                    <% end %>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <% @coolify_teams.each do |team| %>
+      <div class="team-section mb-8">
+        <h2 class="text-lg font-bold mb-4 text-gray-700"><%= team.name %></h2>
+        
+        <div class="server-grid">
+          <% team.servers.each do |server| %>
+            <% latest = @latest_server_stats[server.id] %>
+            <div class="server-card">
+              <div class="server-card-header">
+                <div>
+                  <div class="server-card-title">
+                    <%= link_to server.name, server_path(server) %>
                   </div>
-                  <div class="server-url"><%= server.ip %>:<%= server.port %> (<%= server.user %>) • <%= server.proxy_type || 'no-proxy' %> • <%= server.resources.count %> resources
-                    <% unless server.private_key&.private_key.present? %>
-                      <span class="badge badge-warning">SSH key required</span>
-                      <button class="btn btn-small" data-action="add-key" data-server-id="<%= server.id %>">Add SSH Key</button>
-                    <% end %>
+                  <div class="server-card-subtitle">
+                    <%= server.ip %>:<%= server.port %>
                   </div>
-                  <% if (stat = @latest_server_stats[server.id]) %>
-                    <div class="server-stats">
-                      CPU: <%= stat.cpu_pct&.round(1) %>% • MEM: <%= format_memory_stat(stat) %> • LOAD: <%= format_load_stat(stat, server) %>
+                </div>
+                <% if server.is_reachable %>
+                  <span class="badge badge-success">Online</span>
+                <% else %>
+                  <span class="badge badge-error">Offline</span>
+                <% end %>
+              </div>
+              
+              <div class="server-card-body">
+                <!-- Mini Charts -->
+                <div class="server-charts-container">
+                  <div class="mini-chart-box">
+                    <span class="mini-chart-label">CPU</span>
+                    <div class="mini-chart-canvas-wrapper">
+                      <canvas id="cpu-<%= server.id %>"></canvas>
                     </div>
-                    <% local_fs = local_filesystems(stat) %>
-                    <% if local_fs.any? %>
-                      <div class="filesystem-breakdown">
-                        DISK: <%= local_fs.map { |fs| format_filesystem(fs) }.join(' • ') %>
-                      </div>
-                    <% end %>
+                    <div class="text-xs text-right font-mono mt-1" style="font-size: 0.7rem; text-align: right; font-family: monospace; margin-top: 0.25rem;">
+                      <%= latest&.cpu_pct&.round(0) || 0 %>%
+                    </div>
+                  </div>
+                  <div class="mini-chart-box">
+                    <span class="mini-chart-label">RAM</span>
+                    <div class="mini-chart-canvas-wrapper">
+                      <canvas id="ram-<%= server.id %>"></canvas>
+                    </div>
+                    <div class="text-xs text-right font-mono mt-1" style="font-size: 0.7rem; text-align: right; font-family: monospace; margin-top: 0.25rem;">
+                      <%= latest&.mem_pct&.round(0) || 0 %>%
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="text-xs text-gray-500 mt-2" style="font-size: 0.75rem; color: #6b7280; margin-top: 0.5rem;">
+                  Resources: <%= server.resources.count %> 
+                  (Apps: <%= server.resources.select { |r| r.type == 'Application' }.count %>, 
+                   DBs: <%= server.resources.select { |r| r.type == 'CoolifyDatabase' }.count %>)
+                </div>
+              </div>
+              
+              <!-- Footer Stats -->
+              <div class="server-stats-row">
+                <div class="stat-badge">
+                  <% if latest && latest.disk_used_bytes && latest.disk_total_bytes %>
+                    <% disk_pct = (latest.disk_used_bytes.to_f / latest.disk_total_bytes) * 100 %>
+                    <span class="stat-dot <%= disk_pct > 85 ? 'red' : 'green' %>"></span>
+                    Disk: <%= format_disk_stat(latest) %>
+                  <% else %>
+                    <span class="stat-dot"></span>
+                    Disk: N/A
                   <% end %>
-                </li>
-              <% end %>
-            </ul>
-          <% end %>
-
-          <!-- Projects Section -->
-          <h3>Projects (<%= coolify_team.projects.count %>)</h3>
-          <% if coolify_team.projects.empty? %>
-            <p class="no-data">No projects synced yet.</p>
-          <% else %>
-            <ul class="tree-list project-list">
-              <% coolify_team.projects.each do |project| %>
-                <li class="tree-item project-item">
-                  <div class="item-name project-name"><%= project.name %></div>
-                  
-                  <!-- Environments for this project -->
-                  <% if project.environments.any? %>
-                    <ul class="tree-list environment-list">
-                      <% project.environments.each do |environment| %>
-                        <li class="tree-item environment-item">
-                          <div class="item-name environment-name">
-                            <%= environment.name %> <span class="count">(<%= environment.resources.count %>)</span>
-                          </div>
-                          
-                          <!-- Resources for this environment -->
-                          <% if environment.resources.any? %>
-                            <ul class="tree-list resource-list">
-                              <% environment.resources.each do |resource| %>
-                                <li class="tree-item resource-item">
-                                  <div class="resource-type-label"><%= resource.type.sub('Coolify', '').downcase %></div>
-                                  <div class="item-name resource-name">
-                                    <%= link_to resource.name, resource_path(resource), class: "resource-detail-link" %>
-                                    <% if resource.status %>
-                                      <span class="status <%= resource.status.include?('running') ? 'ok' : 'err' %>">
-                                        <%= resource.status %>
-                                      </span>
-                                    <% end %>
-                                    <% if resource.fqdn.present? %>
-                                      • <%= resource.fqdn %>
-                                    <% end %>
-                                  </div>
-                                  <div class="resource-server">
-                                    📍 <%= resource.server.name %>
-                                  </div>
-                                  <% if (rstat = @latest_resource_stats[resource.id]) %>
-                                    <div class="resource-stats">
-                                      CPU: <%= rstat.cpu_pct&.round(1) %>% • MEM: <%= format_memory_stat(rstat) %> • DISK: <%= format_bytes([rstat.disk_persistent_bytes, rstat.disk_runtime_bytes].compact.sum) %>
-                                    </div>
-                                  <% end %>
-                                </li>
-                              <% end %>
-                            </ul>
-                          <% end %>
-                        </li>
-                      <% end %>
-                    </ul>
-                  <% end %>
-                </li>
-              <% end %>
-            </ul>
+                </div>
+                <div class="stat-badge">
+                  Load: <%= latest&.load1&.round(2) || '-' %>
+                </div>
+              </div>
+            </div>
           <% end %>
         </div>
       </div>
     <% end %>
-  </div>
+
+    <!-- Script to Init Charts -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const commonOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: {
+            x: { display: false },
+            y: { display: false, min: 0, max: 100 }
+          },
+          elements: {
+            point: { radius: 0 },
+            line: { borderWidth: 2, tension: 0.3 }
+          }
+        };
+
+        const serverData = {
+          <% @coolify_teams.flat_map(&:servers).each do |server| %>
+            <%= server.id %>: {
+              timestamps: <%= raw (@server_histories[server.id] || []).map { |s| s.captured_at.to_i * 1000 }.to_json %>,
+              cpu: <%= raw (@server_histories[server.id] || []).map { |s| s.cpu_pct }.to_json %>,
+              ram: <%= raw (@server_histories[server.id] || []).map { |s| s.mem_pct }.to_json %>
+            },
+          <% end %>
+        };
+
+        for (const [serverId, data] of Object.entries(serverData)) {
+          if (!data.timestamps || data.timestamps.length === 0) continue;
+
+          // CPU Chart
+          const cpuCtx = document.getElementById(`cpu-${serverId}`);
+          if (cpuCtx) {
+            new Chart(cpuCtx, {
+              type: 'line',
+              data: {
+                labels: data.timestamps,
+                datasets: [{
+                  data: data.cpu,
+                  borderColor: '#ef4444',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  fill: true
+                }]
+              },
+              options: commonOptions
+            });
+          }
+
+          // RAM Chart
+          const ramCtx = document.getElementById(`ram-${serverId}`);
+          if (ramCtx) {
+            new Chart(ramCtx, {
+              type: 'line',
+              data: {
+                labels: data.timestamps,
+                datasets: [{
+                  data: data.ram,
+                  borderColor: '#8b5cf6',
+                  backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                  fill: true
+                }]
+              },
+              options: commonOptions
+            });
+          }
+        }
+      });
+    </script>
   
   <% elsif @view == 'storage' %>
     <!-- Storage View: Resources sorted by disk usage -->

@@ -9,6 +9,27 @@ fi
 # If running the rails server then create or migrate existing database
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
   ./bin/rails db:prepare
+  
+  # Create and migrate queue database if using local database
+  if [ -z "${PROD_DATABASE_URL:-}" ] || [[ "${DATABASE_URL:-}" == *"@db:5432"* ]]; then
+    QUEUE_DB_URL="${QUEUE_DATABASE_URL:-postgresql://postgres:password@db:5432/coolify_admin_development_queue}"
+    QUEUE_DB_NAME=$(echo "$QUEUE_DB_URL" | sed -n 's/.*\/\([^?]*\).*/\1/p')
+    
+    if [ -n "$QUEUE_DB_NAME" ] && [[ "$QUEUE_DB_URL" == *"@db:5432"* ]]; then
+      # Extract connection details
+      DB_HOST=$(echo "$QUEUE_DB_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+      DB_PORT=$(echo "$QUEUE_DB_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+      DB_USER=$(echo "$QUEUE_DB_URL" | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+      DB_PASS=$(echo "$QUEUE_DB_URL" | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p')
+      
+      # Create queue database if it doesn't exist (only for local db)
+      PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USER" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$QUEUE_DB_NAME'" | grep -q 1 || \
+      PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USER" -d postgres -c "CREATE DATABASE $QUEUE_DB_NAME;" 2>/dev/null || true
+      
+      # Run queue migrations
+      ./bin/rails db:migrate:queue 2>/dev/null || true
+    fi
+  fi
 fi
 
 exec "${@}"
