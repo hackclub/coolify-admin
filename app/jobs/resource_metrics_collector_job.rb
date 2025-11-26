@@ -17,10 +17,17 @@ class ResourceMetricsCollectorJob < ApplicationJob
 
     client = SshClient.new(host: server.ip, user: server.user, port: server.port || 22, private_key: key)
 
-    # List containers via Docker Engine API
+    # List containers via Docker Engine API (version-less URL for auto-negotiation)
     Rails.logger.info "[ResourceMetrics] #{server.name}: Fetching container list..."
-    _code, list_out, _ = client.exec!("curl --silent --unix-socket /var/run/docker.sock http://localhost/v1.43/containers/json")
-    containers = JSON.parse(list_out) rescue []
+    _code, list_out, _ = client.exec!("curl --silent --unix-socket /var/run/docker.sock http://localhost/containers/json")
+    
+    # Parse response and handle potential API errors
+    parsed = JSON.parse(list_out) rescue nil
+    if parsed.is_a?(Hash) && parsed['message']
+      # Docker API returned an error object instead of container list
+      raise "Docker API error: #{parsed['message']}"
+    end
+    containers = parsed.is_a?(Array) ? parsed : []
     Rails.logger.info "[ResourceMetrics] #{server.name}: Found #{containers.count} containers"
 
     # Map container IDs to resources by label
@@ -270,6 +277,7 @@ class ResourceMetricsCollectorJob < ApplicationJob
   rescue => e
     elapsed = (Time.current - start_time).round(1) rescue 0
     Rails.logger.error "[ResourceMetrics] #{server.name}: ✗ FAILED after #{elapsed}s - #{e.class}: #{e.message}"
+    raise  # Re-raise to mark job as failed for Solid Queue
   end
 
   private
