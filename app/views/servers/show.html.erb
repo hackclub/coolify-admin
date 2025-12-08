@@ -122,6 +122,9 @@
         </button>
       <% else %>
         <p class="text-muted">Add an SSH key to start collecting metrics.</p>
+        <% if @server.private_key.present? %>
+          <%= link_to "🔑 Add SSH Key", edit_private_key_path(@server.private_key), class: "btn btn-primary" %>
+        <% end %>
       <% end %>
       <%= link_to "← Back to Overview", root_path, class: "btn btn-secondary" %>
     </div>
@@ -485,6 +488,10 @@
           <dd>
             <% if @server.private_key&.private_key.present? %>
               <span class="status-badge running">Configured</span>
+              <%= link_to "Edit", edit_private_key_path(@server.private_key), class: "btn btn-sm btn-secondary", style: "margin-left: 8px;" %>
+            <% elsif @server.private_key.present? %>
+              <span class="status-badge stopped">Not configured</span>
+              <%= link_to "Add", edit_private_key_path(@server.private_key), class: "btn btn-sm btn-primary", style: "margin-left: 8px;" %>
             <% else %>
               <span class="status-badge stopped">Not configured</span>
             <% end %>
